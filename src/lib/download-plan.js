@@ -25,7 +25,7 @@ export function buildDownloadPlan({ tree, selections, owner, repo, branch, prefi
     if (selectionType === 'blob') {
       const match = tree.find((item) => item.type === 'blob' && item.path === selectionPath);
       if (match) {
-        entriesBySource.set(match.path, createEntry(match.path, owner, repo, branch, rootPath));
+        entriesBySource.set(match.path, createEntry(match, owner, repo, branch, rootPath));
       }
       continue;
     }
@@ -34,7 +34,7 @@ export function buildDownloadPlan({ tree, selections, owner, repo, branch, prefi
     for (const item of tree) {
       if (item.type !== 'blob') continue;
       if (prefixPath && !item.path.startsWith(prefixPath)) continue;
-      entriesBySource.set(item.path, createEntry(item.path, owner, repo, branch, rootPath));
+      entriesBySource.set(item.path, createEntry(item, owner, repo, branch, rootPath));
     }
   }
 
@@ -44,15 +44,19 @@ export function buildDownloadPlan({ tree, selections, owner, repo, branch, prefi
 
   return {
     repo,
+    owner,
+    branch,
     rootPath,
     entries
   };
 }
 
-function createEntry(sourcePath, owner, repo, branch, rootPath) {
+function createEntry(treeItem, owner, repo, branch, rootPath) {
   return {
-    sourcePath,
-    targetPath: joinPath(rootPath, sourcePath),
-    downloadUrl: buildRawUrl(owner, repo, branch, sourcePath)
+    sourcePath: treeItem.path,
+    targetPath: joinPath(rootPath, treeItem.path),
+    downloadUrl: buildRawUrl(owner, repo, branch, treeItem.path),
+    blobSha: treeItem.sha || '',
+    size: Number.isFinite(treeItem.size) ? treeItem.size : null
   };
 }

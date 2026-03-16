@@ -52,6 +52,27 @@ async function apiFetch(url, token) {
   return res.json();
 }
 
+function normalizeRepoMetadata(data) {
+  return {
+    id: data?.id || null,
+    htmlUrl: data?.html_url || '',
+    fullName: data?.full_name || '',
+    defaultBranch: data?.default_branch || '',
+    visibility: data?.visibility || '',
+    private: !!data?.private,
+    description: data?.description || '',
+    pushedAt: data?.pushed_at || '',
+    updatedAt: data?.updated_at || ''
+  };
+}
+
+function normalizeBranchMetadata(data) {
+  return {
+    name: data?.name || '',
+    commitSha: data?.commit?.sha || ''
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -65,11 +86,48 @@ async function apiFetch(url, token) {
  * @returns {Promise<string>}
  */
 export async function getDefaultBranch(owner, repo, token) {
+  const repoMetadata = await getRepoMetadata(owner, repo, token);
+  return repoMetadata.defaultBranch;
+}
+
+export async function getRepoMetadata(owner, repo, token) {
   const data = await apiFetch(
     `https://api.github.com/repos/${owner}/${repo}`,
     token
   );
-  return data.default_branch;
+
+  return normalizeRepoMetadata(data);
+}
+
+export async function getBranchMetadata(owner, repo, branch, token) {
+  const data = await apiFetch(
+    `https://api.github.com/repos/${owner}/${repo}/branches/${branch}`,
+    token
+  );
+
+  return normalizeBranchMetadata(data);
+}
+
+export async function getTreeData(owner, repo, branch, token) {
+  const data = await apiFetch(
+    `https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`,
+    token
+  );
+  if (!Array.isArray(data?.tree)) {
+    const apiMessage = typeof data?.message === 'string' ? ` ${data.message}` : '';
+    throw new Error(`GitHub tree response was invalid for ${owner}/${repo}@${branch}.${apiMessage}`.trim());
+  }
+
+  return {
+    sha: data?.sha || '',
+    tree: data.tree.map((item) => ({
+      path: item.path,
+      type: item.type,
+      sha: item.sha,
+      size: item.size,
+      url: item.url
+    }))
+  };
 }
 
 /**
@@ -82,21 +140,8 @@ export async function getDefaultBranch(owner, repo, token) {
  * @returns {Promise<Array<{path: string, type: string, sha: string, size?: number, url: string}>>}
  */
 export async function getTree(owner, repo, branch, token) {
-  const data = await apiFetch(
-    `https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`,
-    token
-  );
-  if (!Array.isArray(data?.tree)) {
-    const apiMessage = typeof data?.message === 'string' ? ` ${data.message}` : '';
-    throw new Error(`GitHub tree response was invalid for ${owner}/${repo}@${branch}.${apiMessage}`.trim());
-  }
-  return data.tree.map(item => ({
-    path: item.path,
-    type: item.type,
-    sha: item.sha,
-    size: item.size,
-    url: item.url
-  }));
+  const data = await getTreeData(owner, repo, branch, token);
+  return data.tree;
 }
 
 /**

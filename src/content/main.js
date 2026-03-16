@@ -15,8 +15,14 @@ import {
 } from './checkbox-injector.js';
 import { initOverlayBar, updateOverlayBar } from './overlay-bar.js';
 import { showProgressModal, updateProgress, showComplete, hideProgressModal } from './progress-modal.js';
-import { createCancelState, cancelWriteJob, ensureWritableDirectory, writeFiles } from '../lib/file-writer.js';
+import { createCancelState, cancelWriteJob, ensureWritableDirectory, writeFile, writeFiles } from '../lib/file-writer.js';
 import { DIRECTORY_ACCESS_STATES } from '../lib/directory-state.js';
+import {
+  buildRepoMarkerPath,
+  createRepoMarkerPayload,
+  deriveRunStatus,
+  DOWNLOAD_RUN_STATUS
+} from '../lib/history-model.js';
 
 const LOG = '[GFDL]';
 let activeCancelState = null;
@@ -58,7 +64,8 @@ async function handleDownload() {
 
   const settings = await chrome.storage.local.get({
     browserDownloadMode: false,
-    concurrentDownloads: 3
+    concurrentDownloads: 3,
+    writeRepoMarker: false
   });
 
   if (settings.browserDownloadMode) {
@@ -135,6 +142,10 @@ async function handleDownload() {
 
   if (cancelState.cancelled) {
     activeCancelState = null;
+    await finalizeDownloadHistoryRun(response.runId, {
+      status: DOWNLOAD_RUN_STATUS.CANCELLED,
+      errors: []
+    });
     handleComplete({ total: 0, errors: [], cancelled: true, rolledBack: 0 });
     return;
   }
@@ -153,6 +164,25 @@ async function handleDownload() {
     onProgress: (progress) => updateProgress(progress)
   });
   activeCancelState = null;
+
+  const markerState = await maybeWriteRepoMarker({
+    enabled: settings.writeRepoMarker,
+    dirHandle: directoryResult.handle,
+    historyContext: response.historyContext,
+    cancelled: !!result.cancelled,
+    errors: result.errors
+  });
+
+  await finalizeDownloadHistoryRun(response.runId, {
+    status: deriveRunStatus({
+      cancelled: !!result.cancelled,
+      totalCount: response.manifest.entries.length,
+      errorCount: result.errors.length
+    }),
+    errors: result.errors,
+    markerWritten: markerState.markerWritten,
+    markerPath: markerState.markerPath
+  });
 
   handleComplete({
     total: result.completed,
@@ -247,6 +277,9 @@ async function handleBrowserManagedDownload(parsed, items) {
     }
 
     cancelState.browserDownloadIds.push(downloadResponse.downloadId);
+    if (downloadResponse.targetPath) {
+      entry.targetPath = downloadResponse.targetPath;
+    }
     completed++;
 
     updateProgress({
@@ -258,6 +291,10 @@ async function handleBrowserManagedDownload(parsed, items) {
   }
 
   if (cancelState.cancelled) {
+    await finalizeDownloadHistoryRun(response.runId, {
+      status: DOWNLOAD_RUN_STATUS.CANCELLED,
+      errors: []
+    });
     await cancelBrowserDownloads(cancelState.browserDownloadIds);
     activeCancelState = null;
     handleComplete({
@@ -269,6 +306,15 @@ async function handleBrowserManagedDownload(parsed, items) {
     });
     return;
   }
+
+  await finalizeDownloadHistoryRun(response.runId, {
+    status: deriveRunStatus({
+      cancelled: false,
+      totalCount: total,
+      errorCount: errors.length
+    }),
+    errors
+  });
 
   activeCancelState = null;
   handleComplete({
@@ -335,6 +381,45 @@ async function cancelBrowserDownloads(downloadIds) {
     type: 'CANCEL_BROWSER_DOWNLOADS',
     payload: { downloadIds }
   });
+}
+
+async function finalizeDownloadHistoryRun(runId, payload) {
+  if (!runId) {
+    return;
+  }
+
+  const response = await safeSendMessage({
+    type: 'FINALIZE_DOWNLOAD_RUN',
+    payload: {
+      runId,
+      ...payload
+    }
+  });
+
+  if (!response?.ok) {
+    console.warn(LOG, 'Failed to finalize history run:', response?.error || 'Unknown error');
+  }
+}
+
+async function maybeWriteRepoMarker({ enabled, dirHandle, historyContext, cancelled, errors }) {
+  if (!enabled || !dirHandle || !historyContext || cancelled || errors?.length) {
+    return { markerWritten: false, markerPath: '' };
+  }
+
+  try {
+    const markerPath = buildRepoMarkerPath(historyContext.logicalRootPath);
+    const payload = createRepoMarkerPayload({
+      ...historyContext,
+      status: DOWNLOAD_RUN_STATUS.COMPLETED,
+      finishedAt: new Date().toISOString()
+    });
+
+    await writeFile(dirHandle, markerPath, JSON.stringify(payload, null, 2));
+    return { markerWritten: true, markerPath };
+  } catch (error) {
+    console.warn(LOG, 'Failed to write repo marker:', error.message);
+    return { markerWritten: false, markerPath: '' };
+  }
 }
 
 function getDirectoryErrorMessage(reason) {

@@ -97,9 +97,18 @@ async function runTests() {
       const title = await popupPage.$eval('.popup__title', el => el.textContent);
       if (title !== 'GFDL') throw new Error(`Expected title "GFDL", got "${title}"`);
 
+      const settingsLabel = await popupPage.$eval('#settingsAccordion .popup__label', el => el.textContent);
+      if (settingsLabel !== 'SETTINGS') throw new Error(`Expected settings accordion label, got "${settingsLabel}"`);
+
+      const settingsClosed = await popupPage.$eval('#settingsAccordion', el => !el.open);
+      if (!settingsClosed) throw new Error('Expected settings accordion to start collapsed');
+
+      await popupPage.click('#settingsAccordion summary');
+      await popupPage.waitForFunction(() => document.getElementById('settingsAccordion').open, { timeout: 5000 });
+
       const browserModeLabel = await popupPage.$eval('label[for="browserDownloadMode"]', el => el.textContent);
       if (!browserModeLabel.includes('BROWSER')) {
-        throw new Error(`Expected browser download mode setting label, got "${browserModeLabel}"`);
+        throw new Error(`Expected browser download mode setting label after expand, got "${browserModeLabel}"`);
       }
 
       await popupPage.close();

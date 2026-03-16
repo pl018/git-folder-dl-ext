@@ -15,7 +15,9 @@ downloads in the automated path.
 5. The content script requests a resolved download plan from the service worker.
 6. The service worker fetches repository metadata, resolves the tree, and returns a deduplicated manifest.
 7. The content script fetches file bodies and writes them directly to disk using the File System Access API.
-8. Auto mode clears the selection and closes the progress UI after a successful run.
+8. The extension records repo metadata, selections, resolved files, and timestamps in local history.
+9. If enabled, a `.gfdl-download.json` marker is written at the downloaded repo root after a clean direct-write run.
+10. Auto mode clears the selection and closes the progress UI after a successful run.
 
 ## Output Contract
 
@@ -23,6 +25,7 @@ downloads in the automated path.
 - Selected files are written at their repository-relative path under that root.
 - Selected folders preserve full repository-relative structure under that root.
 - Overlapping selections are deduplicated by repository path before writing.
+- History records always store the logical root path and best-effort native path metadata when a linked OS path exists.
 
 ## Failure States
 
@@ -30,12 +33,14 @@ downloads in the automated path.
 - `folder-access-expired`: a handle exists but write permission is no longer granted.
 - Manifest resolution failure: GitHub tree lookup or selection resolution returned no files.
 - File write failure: fetch or write failed for an individual entry; the run completes with per-file errors.
+- History mirror failure: the native helper or SQLite CLI was unavailable; downloads still complete and extension history still records the run.
 
 ## Support Notes
 
 - If users report browser save prompts, the direct-write flow was not active or folder access was not granted.
 - If users say files land in the browser Downloads folder, check that they are running the updated build and that no legacy extension build is loaded.
 - If users report duplicate files after mixed selections, verify the current build includes `download-plan.js` and dedupe logic in the resolved manifest path.
+- If users do not see SQL history, verify the native helper is installed and `sqlite3.exe` is available to the helper environment.
 
 ## Manual Verification Checklist
 

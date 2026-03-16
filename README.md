@@ -9,6 +9,10 @@ Chrome extension (Manifest V3) that lets you select and download folders from an
 - **Deterministic output layout** under `<target>/<optional-prefix>/<repo>/...`
 - **Deduplicated mixed selections** so folder + nested file selections only save once
 - **Auto mode**: download, clear selections, and close progress automatically
+- **Recent download history** with repo URL, owner/repo, timestamp, branch/SHA, and destination summary
+- **Local SQL mirror** through the Windows native helper when available
+- **Optional repo marker file** for future move/version reconciliation
+- **Filename fallback** for dotfiles or Windows-invalid names when the platform rejects the original target path
 - **GitHub auth**: OAuth Device Flow or Personal Access Token
 - **Neobrutalist dark UI**: lime `#ccff00` accent on dark `#09090b`, hard shadows, uppercase labels
 
@@ -34,7 +38,9 @@ Click the extension icon to open the popup:
 - **Subfolder Prefix** — Optional subfolder inside the granted target folder
 - **Auto Mode** — Toggle for hands-free download workflow
 - **Open Folder After Download** — Opens the linked OS folder after a clean download
+- **Write Repo Marker** — Optional `.gfdl-download.json` file at the downloaded repo root
 - **Concurrent Downloads** — 1–6 parallel file downloads
+- **Recent Downloads** — Read-only list of the most recent completed download runs
 
 ## How It Works
 
@@ -44,6 +50,7 @@ Click the extension icon to open the popup:
 4. Click the **DOWNLOAD** button on the floating bar
 5. If folder access is missing or expired, reauthorize once
 6. Files write directly to `<target>/<optional-prefix>/<repo>/...`
+7. Completed runs are recorded in extension history and mirrored to a local SQLite DB when the native helper supports it
 
 ## Project Structure
 
@@ -95,10 +102,12 @@ npm test               # Run CDP smoke tests (requires headed Chrome)
 - The extension does not silently fall back to browser-managed Downloads.
 - Output paths are always rooted at `<target>/<optional-prefix>/<repo>/...`.
 - If folder access expires, the next download prompts for reauthorization before any files are written.
+- History recording is always on; the optional repo marker file is off by default.
+- If Chrome or Windows rejects a target name such as `.env.example`, GFDL retries with a safe underscore-prefixed filename such as `_.env.example`.
 
 ## Windows Native Helper
 
-To enable `OPEN FOLDER AFTER DOWNLOAD`, install the native helper once:
+To enable `OPEN FOLDER AFTER DOWNLOAD` and the local SQL history mirror, install the native helper once:
 
 1. Load the unpacked extension from `dist/`.
 2. Copy the extension ID from the popup.
@@ -110,6 +119,7 @@ powershell -ExecutionPolicy Bypass -File scripts/install-native-host.ps1 -Extens
 
 4. Reload the extension.
 5. In the popup, grant `TARGET FOLDER ACCESS`, then use `LINK` under `OPEN FOLDER LINK` and choose the same folder path for Explorer-open support.
+6. If you want the SQL mirror, make sure `sqlite3.exe` is reachable either on PATH or through `GFDL_SQLITE3_PATH`.
 
 ## License
 

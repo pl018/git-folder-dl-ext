@@ -6,6 +6,7 @@
 
 import { DIRECTORY_ACCESS_STATES, resolveDirectoryAccessState } from './directory-state.js';
 import { set as setStorage } from './storage.js';
+import { isInvalidFilenameError, sanitizeDownloadTargetPath } from './target-path.js';
 
 const DB_NAME = 'gfdl-storage';
 const STORE_NAME = 'handles';
@@ -208,6 +209,25 @@ export function cancelWriteJob(cancelState) {
  * @returns {Promise<{ targetPath: string, existed: boolean, previousData: ArrayBuffer|null }>}
  */
 export async function writeFile(dirHandle, relativePath, data) {
+  try {
+    return await writeFileInternal(dirHandle, relativePath, data);
+  } catch (error) {
+    const sanitizedPath = sanitizeDownloadTargetPath(relativePath);
+    if (sanitizedPath !== relativePath && isInvalidFilenameError(error)) {
+      console.warn('[GFDL] Retrying invalid filename with sanitized path:', relativePath, '->', sanitizedPath);
+      const retryResult = await writeFileInternal(dirHandle, sanitizedPath, data);
+      return {
+        ...retryResult,
+        requestedTargetPath: relativePath,
+        sanitizedTargetPath: sanitizedPath
+      };
+    }
+
+    throw error;
+  }
+}
+
+async function writeFileInternal(dirHandle, relativePath, data) {
   const parts = relativePath.split('/').filter(Boolean);
   const fileName = parts.pop();
   if (!fileName) throw new Error(`Invalid path: ${relativePath}`);
@@ -340,6 +360,9 @@ async function fetchAndWrite(dirHandle, file, fetchFile, cancelState) {
 
   throwIfCancelled(cancelState);
   file.rollbackEntry = await writeFile(dirHandle, file.targetPath, data);
+  if (file.rollbackEntry?.targetPath) {
+    file.actualTargetPath = file.rollbackEntry.targetPath;
+  }
 }
 
 function throwIfCancelled(cancelState) {

@@ -128,3 +128,53 @@ describe('getTree', () => {
     );
   });
 });
+
+describe('metadata helpers', () => {
+  it('normalizes repository metadata into a stable shape', async () => {
+    const { getRepoMetadata } = loadSourceModule(
+      'src/lib/github-api.js',
+      ['getRepoMetadata'],
+      {
+        fetch: async () => ({
+          ok: true,
+          headers: { get: () => null },
+          json: async () => ({
+            id: 42,
+            html_url: 'https://github.com/octocat/Hello-World',
+            full_name: 'octocat/Hello-World',
+            default_branch: 'main',
+            visibility: 'public',
+            private: false,
+            description: 'Example repo'
+          })
+        })
+      }
+    );
+
+    const result = await getRepoMetadata('octocat', 'Hello-World', null);
+    assert.strictEqual(result.id, 42);
+    assert.strictEqual(result.defaultBranch, 'main');
+    assert.strictEqual(result.htmlUrl, 'https://github.com/octocat/Hello-World');
+  });
+
+  it('normalizes branch metadata into commit sha fields', async () => {
+    const { getBranchMetadata } = loadSourceModule(
+      'src/lib/github-api.js',
+      ['getBranchMetadata'],
+      {
+        fetch: async () => ({
+          ok: true,
+          headers: { get: () => null },
+          json: async () => ({
+            name: 'main',
+            commit: { sha: 'deadbeefcafebabe' }
+          })
+        })
+      }
+    );
+
+    const result = await getBranchMetadata('octocat', 'Hello-World', 'main', null);
+    assert.strictEqual(result.name, 'main');
+    assert.strictEqual(result.commitSha, 'deadbeefcafebabe');
+  });
+});

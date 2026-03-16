@@ -8,6 +8,7 @@ helper is used on Windows only for OS-level actions:
 
 - choosing a real folder path to link with Explorer
 - opening that linked folder after a successful download
+- mirroring completed runs into a local SQLite database at `%LOCALAPPDATA%\GFDL\history.sqlite`
 
 ## Install
 
@@ -26,6 +27,7 @@ powershell -ExecutionPolicy Bypass -File scripts/install-native-host.ps1 -Extens
 1. Use `TARGET FOLDER ACCESS` to grant the folder the extension should write to.
 2. Use `OPEN FOLDER LINK` and pick the same folder path in the native helper dialog.
 3. Enable `OPEN FOLDER AFTER DOWNLOAD`.
+4. If you want the SQL mirror, make sure `sqlite3.exe` is reachable either on PATH or via `GFDL_SQLITE3_PATH`.
 
 If you later change the granted folder, the linked OS path is cleared and must
 be linked again.
@@ -38,5 +40,6 @@ be linked again.
 ## Limitations
 
 - This helper is Windows-focused and opens folders through Explorer.
+- The SQL mirror is best-effort. If `sqlite3.exe` is unavailable, downloads still work and extension-side history remains available.
 - The extension still cannot silently reauthorize File System Access permissions if Chrome revokes them.
 - The linked OS folder path is stored separately from the browser handle because the browser handle does not expose an absolute filesystem path.

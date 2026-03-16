@@ -46,62 +46,84 @@
     </section>
 
     <section class="popup__section">
-      <div class="popup__label">SETTINGS</div>
+      <details class="accordion" id="settingsAccordion">
+        <summary class="accordion-toggle">
+          <span class="popup__label">SETTINGS</span>
+          <span class="accordion-toggle__icon" aria-hidden="true"></span>
+        </summary>
 
-      <div class="setting setting--row" id="browserDownloadModeSetting">
-        <label class="setting__label" for="browserDownloadMode">BROWSER DOWNLOAD MODE</label>
-        <input type="checkbox" class="toggle-neo" id="browserDownloadMode">
-      </div>
-      <span class="setting__hint setting__hint--below" id="browserDownloadModeHint">Bypass target folder access and let Chrome handle the save location.</span>
-
-      <div class="setting" id="folderAccessSetting">
-        <label class="setting__label">TARGET FOLDER ACCESS</label>
-        <div class="path-picker">
-          <span class="path-picker__value" id="downloadPathDisplay">Not set</span>
-          <button class="btn-neo btn-neo--sm" id="pickFolderBtn">BROWSE</button>
-          <button class="btn-neo btn-neo--ghost btn-neo--sm" id="clearFolderBtn" style="display:none;">CLEAR</button>
+        <div class="accordion-panel" id="settingsAccordionPanel">
+        <div class="setting setting--row" id="browserDownloadModeSetting">
+          <label class="setting__label" for="browserDownloadMode">BROWSER DOWNLOAD MODE</label>
+          <input type="checkbox" class="toggle-neo" id="browserDownloadMode">
         </div>
-        <span class="setting__hint">Direct saves write here with no per-file browser prompts</span>
-      </div>
+        <span class="setting__hint setting__hint--below" id="browserDownloadModeHint">Bypass target folder access and let Chrome handle the save location.</span>
 
-      <div class="setting" id="nativeFolderSetting">
-        <label class="setting__label">OPEN FOLDER LINK</label>
-        <div class="path-picker">
-          <span class="path-picker__value path-picker__value--empty" id="nativeFolderDisplay">Not linked</span>
-          <button class="btn-neo btn-neo--sm" id="linkFolderBtn">LINK</button>
+        <div class="setting" id="folderAccessSetting">
+          <label class="setting__label">TARGET FOLDER ACCESS</label>
+          <div class="path-picker">
+            <span class="path-picker__value" id="downloadPathDisplay">Not set</span>
+            <button class="btn-neo btn-neo--sm" id="pickFolderBtn">BROWSE</button>
+            <button class="btn-neo btn-neo--ghost btn-neo--sm" id="clearFolderBtn" style="display:none;">CLEAR</button>
+          </div>
+          <span class="setting__hint">Direct saves write here with no per-file browser prompts</span>
         </div>
-        <span class="setting__hint" id="nativeHelperHint">Install the native helper to open the target folder in Explorer.</span>
-      </div>
 
-      <div class="setting" id="downloadPrefixSetting">
-        <label class="setting__label" for="downloadPrefix">SUBFOLDER PREFIX</label>
-        <input type="text" class="input-neo" id="downloadPrefix" placeholder="github-downloads">
-        <span class="setting__hint">Optional subfolder inside the granted target folder</span>
-      </div>
-
-      <div class="setting setting--row" id="autoModeSetting">
-        <label class="setting__label" for="autoMode">AUTO MODE</label>
-        <input type="checkbox" class="toggle-neo" id="autoMode">
-      </div>
-      <span class="setting__hint setting__hint--below">Download, clear selections, and close progress automatically</span>
-
-      <div class="setting setting--row" id="openAfterDownloadSetting">
-        <label class="setting__label" for="openAfterDownload">OPEN FOLDER AFTER DOWNLOAD</label>
-        <input type="checkbox" class="toggle-neo" id="openAfterDownload">
-      </div>
-      <span class="setting__hint setting__hint--below">Requires the native helper and a linked OS folder path</span>
-
-      <div class="setting">
-        <label class="setting__label" for="concurrency">CONCURRENT DOWNLOADS</label>
-        <div class="setting__slider">
-          <input type="range" class="range-neo" id="concurrency" min="1" max="6" value="3">
-          <span class="setting__value" id="concurrencyValue">3</span>
+        <div class="setting" id="nativeFolderSetting">
+          <label class="setting__label">OPEN FOLDER LINK</label>
+          <div class="path-picker">
+            <span class="path-picker__value path-picker__value--empty" id="nativeFolderDisplay">Not linked</span>
+            <button class="btn-neo btn-neo--sm" id="linkFolderBtn">LINK</button>
+          </div>
+          <span class="setting__hint" id="nativeHelperHint">Install the native helper to open the target folder in Explorer.</span>
         </div>
-      </div>
 
-      <div class="setting">
-        <span class="setting__hint" id="extensionIdHint">Extension ID: loading...</span>
+        <div class="setting" id="downloadPrefixSetting">
+          <label class="setting__label" for="downloadPrefix">SUBFOLDER PREFIX</label>
+          <input type="text" class="input-neo" id="downloadPrefix" placeholder="github-downloads">
+          <span class="setting__hint">Optional subfolder inside the granted target folder</span>
+        </div>
+
+        <div class="setting setting--row" id="autoModeSetting">
+          <label class="setting__label" for="autoMode">AUTO MODE</label>
+          <input type="checkbox" class="toggle-neo" id="autoMode">
+        </div>
+        <span class="setting__hint setting__hint--below">Download, clear selections, and close progress automatically</span>
+
+        <div class="setting setting--row" id="openAfterDownloadSetting">
+          <label class="setting__label" for="openAfterDownload">OPEN FOLDER AFTER DOWNLOAD</label>
+          <input type="checkbox" class="toggle-neo" id="openAfterDownload">
+        </div>
+        <span class="setting__hint setting__hint--below">Requires the native helper and a linked OS folder path</span>
+
+        <div class="setting setting--row" id="writeRepoMarkerSetting">
+          <label class="setting__label" for="writeRepoMarker">WRITE REPO MARKER</label>
+          <input type="checkbox" class="toggle-neo" id="writeRepoMarker">
+        </div>
+        <span class="setting__hint setting__hint--below">Optional .gfdl metadata file at the downloaded repo root for future move/version tracking</span>
+
+        <div class="setting">
+          <label class="setting__label" for="concurrency">CONCURRENT DOWNLOADS</label>
+          <div class="setting__slider">
+            <input type="range" class="range-neo" id="concurrency" min="1" max="6" value="3">
+            <span class="setting__value" id="concurrencyValue">3</span>
+          </div>
+        </div>
+
+        <div class="setting">
+          <span class="setting__hint" id="extensionIdHint">Extension ID: loading...</span>
+        </div>
+        </div>
+      </details>
+    </section>
+
+    <section class="popup__section">
+      <div class="popup__section-head">
+        <div class="popup__label">RECENT DOWNLOADS</div>
+        <span class="section-chip" id="historyMirrorStatus">Checking SQL mirror...</span>
       </div>
+      <div class="history-empty" id="historyEmpty">No completed downloads recorded yet.</div>
+      <div class="history-list" id="historyList" style="display:none;"></div>
     </section>
   </div>
 

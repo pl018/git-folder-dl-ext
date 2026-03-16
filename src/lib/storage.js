@@ -13,7 +13,8 @@ const DEFAULTS = {
   nativeFolderPath: '',
   openAfterDownload: false,
   autoMode: false,        // auto-download: clear checkboxes + close progress on success
-  concurrentDownloads: 3
+  concurrentDownloads: 3,
+  writeRepoMarker: false
 };
 
 const listeners = new Set();

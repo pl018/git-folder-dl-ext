@@ -5,6 +5,7 @@
 
 import { checkStoredDirectory, ensureWritableDirectory, forgetDirectory, pickDirectory } from '../lib/file-writer.js';
 import { DIRECTORY_ACCESS_STATES } from '../lib/directory-state.js';
+import { summarizeRunDestination } from '../lib/history-model.js';
 
 const authDot = document.getElementById('authDot');
 const authText = document.getElementById('authText');
@@ -35,9 +36,14 @@ const autoMode = document.getElementById('autoMode');
 const autoModeSetting = document.getElementById('autoModeSetting');
 const openAfterDownload = document.getElementById('openAfterDownload');
 const openAfterDownloadSetting = document.getElementById('openAfterDownloadSetting');
+const writeRepoMarker = document.getElementById('writeRepoMarker');
+const writeRepoMarkerSetting = document.getElementById('writeRepoMarkerSetting');
 const concurrency = document.getElementById('concurrency');
 const concurrencyValue = document.getElementById('concurrencyValue');
 const extensionIdHint = document.getElementById('extensionIdHint');
+const historyMirrorStatus = document.getElementById('historyMirrorStatus');
+const historyEmpty = document.getElementById('historyEmpty');
+const historyList = document.getElementById('historyList');
 let nativeHelperAvailable = false;
 let directoryHandleReady = false;
 
@@ -45,6 +51,7 @@ loadAuthStatus();
 loadSettings();
 loadDirectoryStatus();
 loadNativeHelperStatus();
+loadRecentHistory();
 extensionIdHint.textContent = `Extension ID: ${chrome.runtime.id}`;
 
 connectBtn.addEventListener('click', startOAuthFlow);
@@ -62,6 +69,7 @@ browserDownloadMode.addEventListener('change', handleBrowserDownloadModeChange);
 downloadPrefix.addEventListener('change', () => saveSetting('downloadPrefix', downloadPrefix.value.trim()));
 autoMode.addEventListener('change', () => saveSetting('autoMode', autoMode.checked));
 openAfterDownload.addEventListener('change', () => saveSetting('openAfterDownload', openAfterDownload.checked));
+writeRepoMarker.addEventListener('change', () => saveSetting('writeRepoMarker', writeRepoMarker.checked));
 concurrency.addEventListener('input', () => {
   concurrencyValue.textContent = concurrency.value;
   saveSetting('concurrentDownloads', parseInt(concurrency.value, 10));
@@ -150,6 +158,7 @@ async function loadNativeHelperStatus() {
   nativeHelperHint.textContent = nativeHelperAvailable
     ? 'Native helper ready. Link the same folder path for Explorer open support.'
     : `Install the native helper with scripts/install-native-host.ps1 -ExtensionId ${chrome.runtime.id}`;
+  renderHistoryMirrorStatus(status?.historyDb);
 }
 
 async function linkNativeFolderPath() {
@@ -197,6 +206,7 @@ async function loadSettings() {
       downloadPrefix: '',
       autoMode: false,
       openAfterDownload: false,
+      writeRepoMarker: false,
       nativeFolderPath: '',
       concurrentDownloads: 3
     });
@@ -204,6 +214,7 @@ async function loadSettings() {
     downloadPrefix.value = result.downloadPrefix;
     autoMode.checked = result.autoMode;
     openAfterDownload.checked = result.openAfterDownload;
+    writeRepoMarker.checked = result.writeRepoMarker;
     concurrency.value = result.concurrentDownloads;
     concurrencyValue.textContent = result.concurrentDownloads;
     if (result.nativeFolderPath) {
@@ -238,12 +249,14 @@ function applyBrowserDownloadModeState(enabled) {
   setSettingDisabled(downloadPrefixSetting, enabled);
   setSettingDisabled(autoModeSetting, enabled);
   setSettingDisabled(openAfterDownloadSetting, enabled);
+  setSettingDisabled(writeRepoMarkerSetting, enabled);
 
   pickFolderBtn.disabled = enabled;
   clearFolderBtn.disabled = enabled;
   downloadPrefix.disabled = enabled;
   autoMode.disabled = enabled;
   openAfterDownload.disabled = enabled;
+  writeRepoMarker.disabled = enabled;
 
   browserDownloadModeHint.textContent = enabled
     ? 'Browser mode is active. Chrome decides whether files save automatically or prompt for a location.'
@@ -261,6 +274,21 @@ async function saveSetting(key, value) {
     await chrome.storage.local.set({ [key]: value });
   } catch (err) {
     console.error(`Failed to save ${key}:`, err);
+  }
+}
+
+async function loadRecentHistory() {
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: 'GET_DOWNLOAD_HISTORY',
+      payload: { limit: 8 }
+    });
+
+    renderRecentHistory(response?.runs || []);
+  } catch (error) {
+    historyEmpty.textContent = `Failed to load history: ${error.message}`;
+    historyEmpty.style.display = 'block';
+    historyList.style.display = 'none';
   }
 }
 
@@ -351,4 +379,85 @@ function showUnauthenticated() {
   authText.textContent = 'Not connected';
   authActions.style.display = 'flex';
   authConnected.style.display = 'none';
+}
+
+function renderHistoryMirrorStatus(historyDb) {
+  if (historyDb?.available) {
+    historyMirrorStatus.textContent = 'SQL Mirror Ready';
+    historyMirrorStatus.className = 'section-chip section-chip--ok';
+    historyMirrorStatus.title = historyDb.dbPath || 'Local SQLite history mirror is ready.';
+    return;
+  }
+
+  historyMirrorStatus.textContent = 'Extension History';
+  historyMirrorStatus.className = 'section-chip section-chip--warn';
+  historyMirrorStatus.title = historyDb?.error || 'History is still stored in the extension.';
+}
+
+function renderRecentHistory(runs) {
+  if (!Array.isArray(runs) || runs.length === 0) {
+    historyEmpty.textContent = 'No completed downloads recorded yet.';
+    historyEmpty.style.display = 'block';
+    historyList.style.display = 'none';
+    historyList.innerHTML = '';
+    return;
+  }
+
+  historyEmpty.style.display = 'none';
+  historyList.style.display = 'flex';
+  historyList.innerHTML = runs.map(renderHistoryItem).join('');
+}
+
+function renderHistoryItem(run) {
+  const fileCount = run?.resolvedEntriesSummary?.totalEntries || 0;
+  const branchLabel = buildBranchLabel(run);
+  const destination = escapeHtml(summarizeRunDestination(run));
+  const selectedItems = escapeHtml(run?.selectedItemsSummary || 'No selection summary');
+  const timestamp = escapeHtml(formatTimestamp(run?.downloadedAt));
+  const status = escapeHtml(run?.status || 'unknown');
+  const repoName = escapeHtml(run?.repoFullName || `${run?.owner || ''}/${run?.repo || ''}`);
+  const statusClass = `history-item__status history-item__status--${status}`;
+
+  return `
+    <article class="history-item">
+      <div class="history-item__head">
+        <div class="history-item__repo">${repoName}</div>
+        <div class="${statusClass}">${status}</div>
+      </div>
+      <div class="history-item__meta">
+        <span class="history-item__meta-tag">${escapeHtml(timestamp)}</span>
+        <span class="history-item__meta-tag">${escapeHtml(fileCount)} file${fileCount === 1 ? '' : 's'}</span>
+        <span class="history-item__meta-tag">${escapeHtml(branchLabel)}</span>
+      </div>
+      <div class="history-item__body">
+        <div class="history-item__line">${selectedItems}</div>
+        <div class="history-item__line">${destination}</div>
+        <div class="history-item__line history-item__line--muted">${escapeHtml(run?.repoUrl || '')}</div>
+      </div>
+    </article>
+  `;
+}
+
+function buildBranchLabel(run) {
+  const branch = run?.branch || run?.defaultBranch || 'default';
+  const shortSha = (run?.branchHeadSha || '').slice(0, 7);
+  return shortSha ? `${branch} @ ${shortSha}` : branch;
+}
+
+function formatTimestamp(value) {
+  const timestamp = Date.parse(value || '');
+  if (!Number.isFinite(timestamp)) {
+    return 'Unknown time';
+  }
+
+  return new Date(timestamp).toLocaleString();
+}
+
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }

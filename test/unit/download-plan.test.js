@@ -15,10 +15,10 @@ describe('joinPath', () => {
 
 describe('buildDownloadPlan', () => {
   const tree = [
-    { path: 'README.md', type: 'blob' },
-    { path: 'src/index.js', type: 'blob' },
-    { path: 'src/lib/utils.js', type: 'blob' },
-    { path: 'docs/guide.md', type: 'blob' },
+    { path: 'README.md', type: 'blob', sha: 'sha-readme', size: 10 },
+    { path: 'src/index.js', type: 'blob', sha: 'sha-index', size: 21 },
+    { path: 'src/lib/utils.js', type: 'blob', sha: 'sha-utils', size: 33 },
+    { path: 'docs/guide.md', type: 'blob', sha: 'sha-guide', size: 44 },
     { path: 'docs', type: 'tree' }
   ];
 
@@ -36,6 +36,8 @@ describe('buildDownloadPlan', () => {
     assert.strictEqual(plan.entries.length, 1);
     assert.strictEqual(plan.entries[0].sourcePath, 'README.md');
     assert.strictEqual(plan.entries[0].targetPath, 'repo/README.md');
+    assert.strictEqual(plan.entries[0].blobSha, 'sha-readme');
+    assert.strictEqual(plan.entries[0].size, 10);
   });
 
   it('preserves repository-relative structure for folder selections', () => {
