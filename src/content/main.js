@@ -56,6 +56,16 @@ async function handleDownload() {
   const parsed = parseCurrentUrl();
   if (!parsed) return;
 
+  const settings = await chrome.storage.local.get({
+    browserDownloadMode: false,
+    concurrentDownloads: 3
+  });
+
+  if (settings.browserDownloadMode) {
+    await handleBrowserManagedDownload(parsed, items);
+    return;
+  }
+
   let directoryResult;
   try {
     directoryResult = await ensureWritableDirectory({
@@ -129,10 +139,6 @@ async function handleDownload() {
     return;
   }
 
-  const settings = await chrome.storage.local.get({
-    concurrentDownloads: 3
-  });
-
   updateProgress({
     completed: 0,
     total: response.manifest.entries.length,
@@ -154,6 +160,123 @@ async function handleDownload() {
     rootPath: response.manifest.rootPath,
     cancelled: result.cancelled,
     rolledBack: result.rolledBack
+  });
+}
+
+async function handleBrowserManagedDownload(parsed, items) {
+  showProgressModal({
+    onCancel: async () => {
+      if (activeCancelState) {
+        cancelWriteJob(activeCancelState);
+        updateProgress({
+          completed: 0,
+          total: 0,
+          currentFile: 'Canceling browser download job...',
+          errors: []
+        });
+        await cancelBrowserDownloads(activeCancelState.browserDownloadIds || []);
+        return;
+      }
+
+      hideProgressModal();
+    }
+  });
+
+  const cancelState = createCancelState();
+  cancelState.browserDownloadIds = [];
+  activeCancelState = cancelState;
+
+  updateProgress({
+    completed: 0,
+    total: 0,
+    currentFile: 'Preparing browser download plan...',
+    errors: []
+  });
+
+  const response = await safeSendMessage({
+    type: 'RESOLVE_DOWNLOAD_PLAN',
+    payload: {
+      owner: parsed.owner,
+      repo: parsed.repo,
+      branch: parsed.branch || null,
+      selections: items,
+      browserDownloadMode: true
+    }
+  });
+
+  if (!response) {
+    activeCancelState = null;
+    showComplete({ total: 0, errors: ['Extension context lost. Reload page.'] });
+    return;
+  }
+
+  if (!response.ok) {
+    activeCancelState = null;
+    showComplete({ total: 0, errors: [response.error] });
+    return;
+  }
+
+  const total = response.manifest.entries.length;
+  const errors = [];
+  let completed = 0;
+
+  for (const entry of response.manifest.entries) {
+    if (cancelState.cancelled) {
+      break;
+    }
+
+    updateProgress({
+      completed,
+      total,
+      currentFile: `Sending ${entry.targetPath} to Chrome...`,
+      errors
+    });
+
+    const downloadResponse = await safeSendMessage({
+      type: 'START_BROWSER_DOWNLOAD',
+      payload: {
+        downloadUrl: entry.downloadUrl,
+        targetPath: entry.targetPath
+      }
+    });
+
+    if (!downloadResponse?.ok) {
+      errors.push(`${entry.targetPath}: ${downloadResponse?.error || 'Failed to start browser download.'}`);
+      completed++;
+      continue;
+    }
+
+    cancelState.browserDownloadIds.push(downloadResponse.downloadId);
+    completed++;
+
+    updateProgress({
+      completed,
+      total,
+      currentFile: `Queued ${entry.targetPath}`,
+      errors
+    });
+  }
+
+  if (cancelState.cancelled) {
+    await cancelBrowserDownloads(cancelState.browserDownloadIds);
+    activeCancelState = null;
+    handleComplete({
+      total: completed,
+      errors: [],
+      cancelled: true,
+      summaryText: 'BROWSER DOWNLOAD CANCELED',
+      detailText: completed > 0 ? `Canceled ${completed} queued file${completed > 1 ? 's' : ''}.` : 'No files were handed to Chrome.'
+    });
+    return;
+  }
+
+  activeCancelState = null;
+  handleComplete({
+    total: completed,
+    errors,
+    summaryText: errors.length === 0
+      ? `${completed} FILE${completed > 1 ? 'S' : ''} SENT TO BROWSER`
+      : ''
   });
 }
 
@@ -201,6 +324,17 @@ async function handleComplete(payload) {
   }
 
   showComplete(payload);
+}
+
+async function cancelBrowserDownloads(downloadIds) {
+  if (!downloadIds?.length) {
+    return;
+  }
+
+  await safeSendMessage({
+    type: 'CANCEL_BROWSER_DOWNLOADS',
+    payload: { downloadIds }
+  });
 }
 
 function getDirectoryErrorMessage(reason) {

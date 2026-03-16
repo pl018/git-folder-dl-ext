@@ -97,9 +97,9 @@ async function runTests() {
       const title = await popupPage.$eval('.popup__title', el => el.textContent);
       if (title !== 'GFDL') throw new Error(`Expected title "GFDL", got "${title}"`);
 
-      const folderLabel = await popupPage.$eval('.setting__label', el => el.textContent);
-      if (!folderLabel.includes('TARGET')) {
-        throw new Error(`Expected target folder setting label, got "${folderLabel}"`);
+      const browserModeLabel = await popupPage.$eval('label[for="browserDownloadMode"]', el => el.textContent);
+      if (!browserModeLabel.includes('BROWSER')) {
+        throw new Error(`Expected browser download mode setting label, got "${browserModeLabel}"`);
       }
 
       await popupPage.close();

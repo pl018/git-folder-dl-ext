@@ -230,6 +230,11 @@ body {
   color: #71717a;
 }
 
+.input-neo:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* Settings */
 .setting {
   display: flex;
@@ -259,6 +264,10 @@ body {
 .setting__hint--below {
   display: block;
   margin-top: -4px;
+}
+
+.setting--disabled {
+  opacity: 0.55;
 }
 
 /* Path picker */
@@ -316,6 +325,11 @@ body {
   position: relative;
   transition: all 0.15s ease-in-out;
   flex-shrink: 0;
+}
+
+.toggle-neo:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .toggle-neo::after {

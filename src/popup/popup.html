@@ -48,7 +48,13 @@
     <section class="popup__section">
       <div class="popup__label">SETTINGS</div>
 
-      <div class="setting">
+      <div class="setting setting--row" id="browserDownloadModeSetting">
+        <label class="setting__label" for="browserDownloadMode">BROWSER DOWNLOAD MODE</label>
+        <input type="checkbox" class="toggle-neo" id="browserDownloadMode">
+      </div>
+      <span class="setting__hint setting__hint--below" id="browserDownloadModeHint">Bypass target folder access and let Chrome handle the save location.</span>
+
+      <div class="setting" id="folderAccessSetting">
         <label class="setting__label">TARGET FOLDER ACCESS</label>
         <div class="path-picker">
           <span class="path-picker__value" id="downloadPathDisplay">Not set</span>
@@ -58,7 +64,7 @@
         <span class="setting__hint">Direct saves write here with no per-file browser prompts</span>
       </div>
 
-      <div class="setting">
+      <div class="setting" id="nativeFolderSetting">
         <label class="setting__label">OPEN FOLDER LINK</label>
         <div class="path-picker">
           <span class="path-picker__value path-picker__value--empty" id="nativeFolderDisplay">Not linked</span>
@@ -67,19 +73,19 @@
         <span class="setting__hint" id="nativeHelperHint">Install the native helper to open the target folder in Explorer.</span>
       </div>
 
-      <div class="setting">
+      <div class="setting" id="downloadPrefixSetting">
         <label class="setting__label" for="downloadPrefix">SUBFOLDER PREFIX</label>
         <input type="text" class="input-neo" id="downloadPrefix" placeholder="github-downloads">
         <span class="setting__hint">Optional subfolder inside the granted target folder</span>
       </div>
 
-      <div class="setting setting--row">
+      <div class="setting setting--row" id="autoModeSetting">
         <label class="setting__label" for="autoMode">AUTO MODE</label>
         <input type="checkbox" class="toggle-neo" id="autoMode">
       </div>
       <span class="setting__hint setting__hint--below">Download, clear selections, and close progress automatically</span>
 
-      <div class="setting setting--row">
+      <div class="setting setting--row" id="openAfterDownloadSetting">
         <label class="setting__label" for="openAfterDownload">OPEN FOLDER AFTER DOWNLOAD</label>
         <input type="checkbox" class="toggle-neo" id="openAfterDownload">
       </div>

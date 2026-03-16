@@ -22,12 +22,19 @@ const deviceCodeEl = document.getElementById('deviceCode');
 const downloadPathDisplay = document.getElementById('downloadPathDisplay');
 const pickFolderBtn = document.getElementById('pickFolderBtn');
 const clearFolderBtn = document.getElementById('clearFolderBtn');
+const folderAccessSetting = document.getElementById('folderAccessSetting');
 const nativeFolderDisplay = document.getElementById('nativeFolderDisplay');
 const linkFolderBtn = document.getElementById('linkFolderBtn');
+const nativeFolderSetting = document.getElementById('nativeFolderSetting');
 const nativeHelperHint = document.getElementById('nativeHelperHint');
+const browserDownloadMode = document.getElementById('browserDownloadMode');
+const browserDownloadModeHint = document.getElementById('browserDownloadModeHint');
 const downloadPrefix = document.getElementById('downloadPrefix');
+const downloadPrefixSetting = document.getElementById('downloadPrefixSetting');
 const autoMode = document.getElementById('autoMode');
+const autoModeSetting = document.getElementById('autoModeSetting');
 const openAfterDownload = document.getElementById('openAfterDownload');
+const openAfterDownloadSetting = document.getElementById('openAfterDownloadSetting');
 const concurrency = document.getElementById('concurrency');
 const concurrencyValue = document.getElementById('concurrencyValue');
 const extensionIdHint = document.getElementById('extensionIdHint');
@@ -51,6 +58,7 @@ pickFolderBtn.addEventListener('click', pickFolder);
 clearFolderBtn.addEventListener('click', clearFolder);
 linkFolderBtn.addEventListener('click', linkNativeFolderPath);
 
+browserDownloadMode.addEventListener('change', handleBrowserDownloadModeChange);
 downloadPrefix.addEventListener('change', () => saveSetting('downloadPrefix', downloadPrefix.value.trim()));
 autoMode.addEventListener('change', () => saveSetting('autoMode', autoMode.checked));
 openAfterDownload.addEventListener('change', () => saveSetting('openAfterDownload', openAfterDownload.checked));
@@ -76,6 +84,8 @@ async function loadDirectoryStatus() {
 }
 
 async function pickFolder() {
+  if (browserDownloadMode.checked) return;
+
   try {
     const directory = await checkStoredDirectory();
     const result = directory.accessState === DIRECTORY_ACCESS_STATES.READY
@@ -100,6 +110,7 @@ async function pickFolder() {
 }
 
 async function clearFolder() {
+  if (browserDownloadMode.checked) return;
   await forgetDirectory();
   showDirectoryUnset();
   showNativeFolderUnlinked();
@@ -142,7 +153,7 @@ async function loadNativeHelperStatus() {
 }
 
 async function linkNativeFolderPath() {
-  if (!nativeHelperAvailable) return;
+  if (!nativeHelperAvailable || browserDownloadMode.checked) return;
 
   const response = await chrome.runtime.sendMessage({ type: 'PICK_NATIVE_FOLDER', payload: {} });
   if (!response?.ok || !response.path) {
@@ -166,7 +177,7 @@ function showNativeFolderUnlinked() {
 }
 
 function updateLinkFolderAvailability() {
-  linkFolderBtn.disabled = !nativeHelperAvailable || !directoryHandleReady;
+  linkFolderBtn.disabled = browserDownloadMode.checked || !nativeHelperAvailable || !directoryHandleReady;
 }
 
 async function loadAuthStatus() {
@@ -182,12 +193,14 @@ async function loadAuthStatus() {
 async function loadSettings() {
   try {
     const result = await chrome.storage.local.get({
+      browserDownloadMode: false,
       downloadPrefix: '',
       autoMode: false,
       openAfterDownload: false,
       nativeFolderPath: '',
       concurrentDownloads: 3
     });
+    browserDownloadMode.checked = result.browserDownloadMode;
     downloadPrefix.value = result.downloadPrefix;
     autoMode.checked = result.autoMode;
     openAfterDownload.checked = result.openAfterDownload;
@@ -198,9 +211,49 @@ async function loadSettings() {
     } else {
       showNativeFolderUnlinked();
     }
+    applyBrowserDownloadModeState(result.browserDownloadMode);
   } catch (err) {
     console.error('Failed to load settings:', err);
   }
+}
+
+async function handleBrowserDownloadModeChange() {
+  const enabled = browserDownloadMode.checked;
+  const nextValues = { browserDownloadMode: enabled };
+
+  if (enabled) {
+    nextValues.autoMode = true;
+    nextValues.openAfterDownload = false;
+    autoMode.checked = true;
+    openAfterDownload.checked = false;
+  }
+
+  await chrome.storage.local.set(nextValues);
+  applyBrowserDownloadModeState(enabled);
+}
+
+function applyBrowserDownloadModeState(enabled) {
+  setSettingDisabled(folderAccessSetting, enabled);
+  setSettingDisabled(nativeFolderSetting, enabled);
+  setSettingDisabled(downloadPrefixSetting, enabled);
+  setSettingDisabled(autoModeSetting, enabled);
+  setSettingDisabled(openAfterDownloadSetting, enabled);
+
+  pickFolderBtn.disabled = enabled;
+  clearFolderBtn.disabled = enabled;
+  downloadPrefix.disabled = enabled;
+  autoMode.disabled = enabled;
+  openAfterDownload.disabled = enabled;
+
+  browserDownloadModeHint.textContent = enabled
+    ? 'Browser mode is active. Chrome decides whether files save automatically or prompt for a location.'
+    : 'Bypass target folder access and let Chrome handle the save location.';
+
+  updateLinkFolderAvailability();
+}
+
+function setSettingDisabled(element, disabled) {
+  element.classList.toggle('setting--disabled', disabled);
 }
 
 async function saveSetting(key, value) {

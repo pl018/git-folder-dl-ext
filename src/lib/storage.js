@@ -9,6 +9,7 @@ const DEFAULTS = {
   downloadDirectoryName: '',
   hasDirectoryHandle: false,
   directoryAccessState: 'folder-missing',
+  browserDownloadMode: false,
   nativeFolderPath: '',
   openAfterDownload: false,
   autoMode: false,        // auto-download: clear checkboxes + close progress on success

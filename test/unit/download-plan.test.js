@@ -88,4 +88,21 @@ describe('buildDownloadPlan', () => {
     assert.strictEqual(plan.entries.length, 4);
     assert.strictEqual(plan.entries[0].targetPath, 'repo/docs/guide.md');
   });
+
+  it('allows browser-mode callers to root downloads at the repo by passing an empty prefix', () => {
+    const plan = buildDownloadPlan({
+      tree,
+      selections: [{ type: 'tree', path: 'src' }],
+      owner: 'owner',
+      repo: 'repo',
+      branch: 'main',
+      prefix: ''
+    });
+
+    assert.strictEqual(plan.rootPath, 'repo');
+    assert.deepStrictEqual(
+      plan.entries.map((entry) => entry.targetPath),
+      ['repo/src/index.js', 'repo/src/lib/utils.js']
+    );
+  });
 });

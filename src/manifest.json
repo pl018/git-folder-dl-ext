@@ -5,6 +5,7 @@
   "description": "Download folders from GitHub repositories as actual file structures — no zipping.",
   "permissions": [
     "storage",
+    "downloads",
     "nativeMessaging"
   ],
   "host_permissions": [

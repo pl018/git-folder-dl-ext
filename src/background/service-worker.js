@@ -40,6 +40,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       handleFetchFileBytes(payload).then(sendResponse).catch((e) => sendResponse({ ok: false, error: e.message }));
       return true;
 
+    case 'START_BROWSER_DOWNLOAD':
+      handleStartBrowserDownload(payload).then(sendResponse).catch((e) => sendResponse({ ok: false, error: e.message }));
+      return true;
+
+    case 'CANCEL_BROWSER_DOWNLOADS':
+      handleCancelBrowserDownloads(payload).then(sendResponse).catch((e) => sendResponse({ ok: false, error: e.message }));
+      return true;
+
     case 'GET_NATIVE_HELPER_STATUS':
       handleGetNativeHelperStatus().then(sendResponse).catch((e) => sendResponse({ ok: false, available: false, error: e.message }));
       return true;
@@ -82,7 +90,7 @@ async function handlePollDeviceToken({ clientId, deviceCode, interval }) {
   return { ok: true, token, username: validation.username };
 }
 
-async function handleResolveDownloadPlan({ owner, repo, branch, selections }) {
+async function handleResolveDownloadPlan({ owner, repo, branch, selections, browserDownloadMode = false }) {
   const normalizedSelections = Array.isArray(selections) ? selections : [];
   const settings = await getAll();
   const token = settings.githubToken;
@@ -98,7 +106,7 @@ async function handleResolveDownloadPlan({ owner, repo, branch, selections }) {
     owner,
     repo,
     branch,
-    prefix: settings.downloadPrefix
+    prefix: browserDownloadMode ? '' : settings.downloadPrefix
   });
 
   if (manifest.entries.length === 0) {
@@ -127,6 +135,37 @@ async function handleFetchFileBytes({ downloadUrl }) {
 
   const buffer = await response.arrayBuffer();
   return { ok: true, bytes: Array.from(new Uint8Array(buffer)) };
+}
+
+async function handleStartBrowserDownload({ downloadUrl, targetPath }) {
+  if (!downloadUrl) {
+    return { ok: false, error: 'Download URL is required.' };
+  }
+
+  const settings = await getAll();
+  const options = {
+    url: downloadUrl,
+    filename: targetPath,
+    conflictAction: 'uniquify'
+  };
+
+  if (settings.githubToken) {
+    options.headers = [{ name: 'Authorization', value: `token ${settings.githubToken}` }];
+  }
+
+  const downloadId = await downloadViaBrowser(options);
+  return { ok: true, downloadId };
+}
+
+async function handleCancelBrowserDownloads({ downloadIds }) {
+  const ids = Array.isArray(downloadIds) ? Array.from(new Set(downloadIds.filter((value) => Number.isInteger(value)))) : [];
+
+  for (const id of ids) {
+    await cancelBrowserDownload(id);
+    await removeBrowserDownloadFile(id);
+  }
+
+  return { ok: true, cancelled: ids.length };
 }
 
 async function handleGetNativeHelperStatus() {
@@ -159,6 +198,32 @@ function sendNativeMessage(message) {
       }
 
       resolve(response);
+    });
+  });
+}
+
+function downloadViaBrowser(options) {
+  return new Promise((resolve, reject) => {
+    chrome.downloads.download(options, (downloadId) => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+        return;
+      }
+      resolve(downloadId);
+    });
+  });
+}
+
+function cancelBrowserDownload(downloadId) {
+  return new Promise((resolve) => {
+    chrome.downloads.cancel(downloadId, () => resolve());
+  });
+}
+
+function removeBrowserDownloadFile(downloadId) {
+  return new Promise((resolve) => {
+    chrome.downloads.removeFile(downloadId, () => {
+      chrome.downloads.erase({ id: downloadId }, () => resolve());
     });
   });
 }

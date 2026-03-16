@@ -61,9 +61,9 @@ export function updateProgress({ completed, total, currentFile, errors = [] }) {
 
 /**
  * Show completion state.
- * @param {{ total: number, errors: string[], cancelled?: boolean, rolledBack?: number }} result
+ * @param {{ total: number, errors: string[], cancelled?: boolean, rolledBack?: number, summaryText?: string, detailText?: string }} result
  */
-export function showComplete({ total, errors = [], cancelled = false, rolledBack = 0 }) {
+export function showComplete({ total, errors = [], cancelled = false, rolledBack = 0, summaryText = '', detailText = '' }) {
   if (!_container) return;
   const normalizedErrors = Array.isArray(errors) ? errors : [];
 
@@ -74,16 +74,16 @@ export function showComplete({ total, errors = [], cancelled = false, rolledBack
 
   if (fill) fill.style.width = '100%';
   if (text) {
-    text.textContent = cancelled
+    text.textContent = summaryText || (cancelled
       ? 'DOWNLOAD CANCELED'
       : normalizedErrors.length > 0
       ? `COMPLETED WITH ${normalizedErrors.length} ERROR${normalizedErrors.length > 1 ? 'S' : ''}`
-      : `${total} FILE${total > 1 ? 'S' : ''} DOWNLOADED`;
+      : `${total} FILE${total > 1 ? 'S' : ''} DOWNLOADED`);
   }
   if (file) {
-    file.textContent = cancelled && rolledBack > 0
+    file.textContent = detailText || (cancelled && rolledBack > 0
       ? `Rolled back ${rolledBack} file${rolledBack > 1 ? 's' : ''}.`
-      : '';
+      : '');
   }
   if (cancelBtn) cancelBtn.textContent = 'CLOSE';
 
