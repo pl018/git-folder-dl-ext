@@ -3,7 +3,7 @@
  * Manages auth status display, settings, and directory access state.
  */
 
-import { checkStoredDirectory, ensureWritableDirectory, forgetDirectory } from '../lib/file-writer.js';
+import { checkStoredDirectory, ensureWritableDirectory, forgetDirectory, pickDirectory } from '../lib/file-writer.js';
 import { DIRECTORY_ACCESS_STATES } from '../lib/directory-state.js';
 
 const authDot = document.getElementById('authDot');
@@ -22,14 +22,23 @@ const deviceCodeEl = document.getElementById('deviceCode');
 const downloadPathDisplay = document.getElementById('downloadPathDisplay');
 const pickFolderBtn = document.getElementById('pickFolderBtn');
 const clearFolderBtn = document.getElementById('clearFolderBtn');
+const nativeFolderDisplay = document.getElementById('nativeFolderDisplay');
+const linkFolderBtn = document.getElementById('linkFolderBtn');
+const nativeHelperHint = document.getElementById('nativeHelperHint');
 const downloadPrefix = document.getElementById('downloadPrefix');
 const autoMode = document.getElementById('autoMode');
+const openAfterDownload = document.getElementById('openAfterDownload');
 const concurrency = document.getElementById('concurrency');
 const concurrencyValue = document.getElementById('concurrencyValue');
+const extensionIdHint = document.getElementById('extensionIdHint');
+let nativeHelperAvailable = false;
+let directoryHandleReady = false;
 
 loadAuthStatus();
 loadSettings();
 loadDirectoryStatus();
+loadNativeHelperStatus();
+extensionIdHint.textContent = `Extension ID: ${chrome.runtime.id}`;
 
 connectBtn.addEventListener('click', startOAuthFlow);
 showPatBtn.addEventListener('click', () => {
@@ -40,9 +49,11 @@ disconnectBtn.addEventListener('click', disconnect);
 
 pickFolderBtn.addEventListener('click', pickFolder);
 clearFolderBtn.addEventListener('click', clearFolder);
+linkFolderBtn.addEventListener('click', linkNativeFolderPath);
 
 downloadPrefix.addEventListener('change', () => saveSetting('downloadPrefix', downloadPrefix.value.trim()));
 autoMode.addEventListener('change', () => saveSetting('autoMode', autoMode.checked));
+openAfterDownload.addEventListener('change', () => saveSetting('openAfterDownload', openAfterDownload.checked));
 concurrency.addEventListener('input', () => {
   concurrencyValue.textContent = concurrency.value;
   saveSetting('concurrentDownloads', parseInt(concurrency.value, 10));
@@ -66,16 +77,20 @@ async function loadDirectoryStatus() {
 
 async function pickFolder() {
   try {
-    const result = await ensureWritableDirectory({
-      promptIfMissing: true,
-      promptIfExpired: true
-    });
+    const directory = await checkStoredDirectory();
+    const result = directory.accessState === DIRECTORY_ACCESS_STATES.READY
+      ? { ok: true, name: (await pickDirectory()).name }
+      : await ensureWritableDirectory({
+          promptIfMissing: true,
+          promptIfExpired: true
+        });
 
     if (!result.ok) {
       await loadDirectoryStatus();
       return;
     }
 
+    showNativeFolderUnlinked();
     showDirectoryReady(result.name);
   } catch (err) {
     if (err.name !== 'AbortError') {
@@ -87,27 +102,71 @@ async function pickFolder() {
 async function clearFolder() {
   await forgetDirectory();
   showDirectoryUnset();
+  showNativeFolderUnlinked();
 }
 
 function showDirectoryReady(name) {
+  directoryHandleReady = true;
   downloadPathDisplay.textContent = name;
   downloadPathDisplay.classList.remove('path-picker__value--empty');
   pickFolderBtn.textContent = 'CHANGE';
   clearFolderBtn.style.display = 'inline-flex';
+  updateLinkFolderAvailability();
 }
 
 function showDirectoryNeedsAccess(name) {
+  directoryHandleReady = false;
   downloadPathDisplay.textContent = `${name} (reauthorization needed)`;
   downloadPathDisplay.classList.remove('path-picker__value--empty');
   pickFolderBtn.textContent = 'REAUTHORIZE';
   clearFolderBtn.style.display = 'inline-flex';
+  updateLinkFolderAvailability();
 }
 
 function showDirectoryUnset() {
+  directoryHandleReady = false;
   downloadPathDisplay.textContent = 'Not set — click Browse';
   downloadPathDisplay.classList.add('path-picker__value--empty');
   pickFolderBtn.textContent = 'BROWSE';
   clearFolderBtn.style.display = 'none';
+  updateLinkFolderAvailability();
+}
+
+async function loadNativeHelperStatus() {
+  const status = await chrome.runtime.sendMessage({ type: 'GET_NATIVE_HELPER_STATUS', payload: {} });
+  nativeHelperAvailable = !!status?.available;
+  updateLinkFolderAvailability();
+  nativeHelperHint.textContent = nativeHelperAvailable
+    ? 'Native helper ready. Link the same folder path for Explorer open support.'
+    : `Install the native helper with scripts/install-native-host.ps1 -ExtensionId ${chrome.runtime.id}`;
+}
+
+async function linkNativeFolderPath() {
+  if (!nativeHelperAvailable) return;
+
+  const response = await chrome.runtime.sendMessage({ type: 'PICK_NATIVE_FOLDER', payload: {} });
+  if (!response?.ok || !response.path) {
+    return;
+  }
+
+  await chrome.storage.local.set({ nativeFolderPath: response.path });
+  showNativeFolderLinked(response.path);
+}
+
+function showNativeFolderLinked(path) {
+  nativeFolderDisplay.textContent = path;
+  nativeFolderDisplay.classList.remove('path-picker__value--empty');
+  linkFolderBtn.textContent = 'RELINK';
+}
+
+function showNativeFolderUnlinked() {
+  nativeFolderDisplay.textContent = 'Not linked';
+  nativeFolderDisplay.classList.add('path-picker__value--empty');
+  linkFolderBtn.textContent = 'LINK';
+}
+
+function updateLinkFolderAvailability() {
+  linkFolderBtn.disabled = !nativeHelperAvailable || !directoryHandleReady;
 }
 
 async function loadAuthStatus() {
@@ -125,12 +184,20 @@ async function loadSettings() {
     const result = await chrome.storage.local.get({
       downloadPrefix: '',
       autoMode: false,
+      openAfterDownload: false,
+      nativeFolderPath: '',
       concurrentDownloads: 3
     });
     downloadPrefix.value = result.downloadPrefix;
     autoMode.checked = result.autoMode;
+    openAfterDownload.checked = result.openAfterDownload;
     concurrency.value = result.concurrentDownloads;
     concurrencyValue.textContent = result.concurrentDownloads;
+    if (result.nativeFolderPath) {
+      showNativeFolderLinked(result.nativeFolderPath);
+    } else {
+      showNativeFolderUnlinked();
+    }
   } catch (err) {
     console.error('Failed to load settings:', err);
   }

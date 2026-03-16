@@ -1,0 +1,9 @@
+{
+    "path":  "C:\\Dev\\01_Active_Projects\\_Internal_Ops\\git-folder-dl-ext\\native-host\\generated\\com.gfdl.folderops.cmd",
+    "description":  "GitHub Folder Downloader native host",
+    "name":  "com.gfdl.folderops",
+    "allowed_origins":  [
+                            "chrome-extension://cohhefmjbmenjhkmdchbpjecojgphkon/"
+                        ],
+    "type":  "stdio"
+}

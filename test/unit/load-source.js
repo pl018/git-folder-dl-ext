@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-function loadSourceModule(relativePath, exportedNames) {
+function loadSourceModule(relativePath, exportedNames, globals = {}) {
   const absPath = path.join(__dirname, '..', '..', relativePath);
   let source = fs.readFileSync(absPath, 'utf8');
 
@@ -16,7 +16,8 @@ function loadSourceModule(relativePath, exportedNames) {
   const context = {
     module: { exports: {} },
     exports: {},
-    console
+    console,
+    ...globals
   };
 
   vm.runInNewContext(source, context, { filename: absPath });

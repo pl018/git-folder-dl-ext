@@ -9,9 +9,10 @@ import { getTree, getDefaultBranch } from '../lib/github-api.js';
 import { buildDownloadPlan } from '../lib/download-plan.js';
 
 const LOG = '[GFDL-SW]';
+const NATIVE_HOST_NAME = 'com.gfdl.folderops';
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  const { type, payload } = message;
+  const { type, payload = {} } = message || {};
   console.log(LOG, 'Message:', type);
 
   switch (type) {
@@ -33,6 +34,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     case 'RESOLVE_DOWNLOAD_PLAN':
       handleResolveDownloadPlan(payload).then(sendResponse).catch((e) => sendResponse({ ok: false, error: e.message }));
+      return true;
+
+    case 'FETCH_FILE_BYTES':
+      handleFetchFileBytes(payload).then(sendResponse).catch((e) => sendResponse({ ok: false, error: e.message }));
+      return true;
+
+    case 'GET_NATIVE_HELPER_STATUS':
+      handleGetNativeHelperStatus().then(sendResponse).catch((e) => sendResponse({ ok: false, available: false, error: e.message }));
+      return true;
+
+    case 'PICK_NATIVE_FOLDER':
+      sendNativeMessage({ action: 'pickFolder' }).then(sendResponse).catch((e) => sendResponse({ ok: false, error: e.message }));
+      return true;
+
+    case 'OPEN_NATIVE_FOLDER':
+      handleOpenNativeFolder(payload).then(sendResponse).catch((e) => sendResponse({ ok: false, error: e.message }));
       return true;
 
     default:
@@ -66,6 +83,7 @@ async function handlePollDeviceToken({ clientId, deviceCode, interval }) {
 }
 
 async function handleResolveDownloadPlan({ owner, repo, branch, selections }) {
+  const normalizedSelections = Array.isArray(selections) ? selections : [];
   const settings = await getAll();
   const token = settings.githubToken;
 
@@ -76,7 +94,7 @@ async function handleResolveDownloadPlan({ owner, repo, branch, selections }) {
   const tree = await getTree(owner, repo, branch, token);
   const manifest = buildDownloadPlan({
     tree,
-    selections,
+    selections: normalizedSelections,
     owner,
     repo,
     branch,
@@ -86,10 +104,61 @@ async function handleResolveDownloadPlan({ owner, repo, branch, selections }) {
   if (manifest.entries.length === 0) {
     return {
       ok: false,
-      error: `No files found for: ${selections.map((selection) => selection.path || selection).join(', ')}`
+      error: `No files found for: ${normalizedSelections.map((selection) => selection.path || selection).join(', ')}`
     };
   }
 
   console.log(LOG, 'Resolved download plan:', manifest.entries.length, 'files →', manifest.rootPath);
   return { ok: true, manifest };
+}
+
+async function handleFetchFileBytes({ downloadUrl }) {
+  const settings = await getAll();
+  const headers = {};
+
+  if (settings.githubToken) {
+    headers.Authorization = `token ${settings.githubToken}`;
+  }
+
+  const response = await fetch(downloadUrl, { headers });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  const buffer = await response.arrayBuffer();
+  return { ok: true, bytes: Array.from(new Uint8Array(buffer)) };
+}
+
+async function handleGetNativeHelperStatus() {
+  try {
+    const response = await sendNativeMessage({ action: 'ping' });
+    return { ok: true, available: true, ...response };
+  } catch (error) {
+    return { ok: false, available: false, error: error.message };
+  }
+}
+
+async function handleOpenNativeFolder({ path }) {
+  if (!path) {
+    return { ok: false, error: 'No linked folder path configured.' };
+  }
+  return sendNativeMessage({ action: 'openFolder', path });
+}
+
+function sendNativeMessage(message) {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendNativeMessage(NATIVE_HOST_NAME, message, (response) => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+        return;
+      }
+
+      if (!response?.ok) {
+        reject(new Error(response?.error || 'Native host request failed.'));
+        return;
+      }
+
+      resolve(response);
+    });
+  });
 }

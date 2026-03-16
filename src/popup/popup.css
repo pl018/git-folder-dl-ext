@@ -172,6 +172,11 @@ body {
   transform: translate(2px, 2px);
 }
 
+.btn-neo:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .btn-neo--accent {
   background: #ccff00;
   color: #000000;

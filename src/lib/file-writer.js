@@ -5,10 +5,12 @@
  */
 
 import { DIRECTORY_ACCESS_STATES, resolveDirectoryAccessState } from './directory-state.js';
+import { set as setStorage } from './storage.js';
 
 const DB_NAME = 'gfdl-storage';
 const STORE_NAME = 'handles';
 const HANDLE_KEY = 'downloadDir';
+const CANCELLED_ERROR = 'DOWNLOAD_CANCELLED';
 
 // ---- IndexedDB helpers ----
 
@@ -56,9 +58,7 @@ async function clearHandle() {
 // ---- Public API ----
 
 async function syncDirectoryMetadata({ handle = null, accessState }) {
-  if (typeof chrome === 'undefined' || !chrome.storage?.local) return;
-
-  await chrome.storage.local.set({
+  await setStorage({
     downloadDirectoryName: handle?.name || '',
     hasDirectoryHandle: !!handle,
     directoryAccessState: accessState
@@ -178,6 +178,7 @@ export async function pickDirectory() {
   const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
   await storeHandle(handle);
   await syncDirectoryMetadata({ handle, accessState: DIRECTORY_ACCESS_STATES.READY });
+  await setStorage({ nativeFolderPath: '' });
   console.log('[GFDL] Directory selected:', handle.name);
   return handle;
 }
@@ -188,6 +189,15 @@ export async function pickDirectory() {
 export async function forgetDirectory() {
   await clearHandle();
   await syncDirectoryMetadata({ handle: null, accessState: DIRECTORY_ACCESS_STATES.MISSING });
+  await setStorage({ nativeFolderPath: '' });
+}
+
+export function createCancelState() {
+  return { cancelled: false };
+}
+
+export function cancelWriteJob(cancelState) {
+  cancelState.cancelled = true;
 }
 
 /**
@@ -195,6 +205,7 @@ export async function forgetDirectory() {
  * @param {FileSystemDirectoryHandle} dirHandle
  * @param {string} relativePath - e.g. "repo/src/components/Button.tsx"
  * @param {Blob|ArrayBuffer|string} data
+ * @returns {Promise<{ targetPath: string, existed: boolean, previousData: ArrayBuffer|null }>}
  */
 export async function writeFile(dirHandle, relativePath, data) {
   const parts = relativePath.split('/').filter(Boolean);
@@ -207,11 +218,21 @@ export async function writeFile(dirHandle, relativePath, data) {
     current = await current.getDirectoryHandle(dirName, { create: true });
   }
 
-  // Write the file
+  let existed = true;
+  let previousData = null;
+  try {
+    const existingHandle = await current.getFileHandle(fileName);
+    previousData = await (await existingHandle.getFile()).arrayBuffer();
+  } catch {
+    existed = false;
+  }
+
   const fileHandle = await current.getFileHandle(fileName, { create: true });
   const writable = await fileHandle.createWritable();
   await writable.write(data);
   await writable.close();
+
+  return { targetPath: relativePath, existed, previousData };
 }
 
 /**
@@ -221,15 +242,17 @@ export async function writeFile(dirHandle, relativePath, data) {
  * @param {FileSystemDirectoryHandle} dirHandle
  * @param {Array<{targetPath: string, downloadUrl: string}>} files
  * @param {Object} options
- * @param {string|null} [options.token] - GitHub auth token
  * @param {number} [options.concurrency=3] - Max concurrent downloads
+ * @param {{cancelled: boolean}} [options.cancelState]
+ * @param {(file: {targetPath: string, downloadUrl: string}) => Promise<Blob|ArrayBuffer|string>} [options.fetchFile]
  * @param {(progress: {completed: number, total: number, currentFile: string, errors: string[]}) => void} [options.onProgress]
- * @returns {Promise<{completed: number, errors: string[]}>}
+ * @returns {Promise<{completed: number, errors: string[], cancelled?: boolean, rolledBack?: number}>}
  */
 export async function writeFiles(dirHandle, files, options = {}) {
   const {
-    token = null,
     concurrency = 3,
+    cancelState = createCancelState(),
+    fetchFile = null,
     onProgress = () => {}
   } = options;
 
@@ -243,24 +266,33 @@ export async function writeFiles(dirHandle, files, options = {}) {
   // Process with concurrency limit
   let fileIndex = 0;
   let running = 0;
+  const rollbackEntries = [];
 
   await new Promise((resolve) => {
     function processNext() {
+      if (cancelState.cancelled) {
+        if (running === 0) resolve();
+        return;
+      }
+
       while (running < concurrency && fileIndex < files.length) {
         const file = files[fileIndex++];
         running++;
         state.currentFile = file.targetPath;
         onProgress({ ...state });
 
-        fetchAndWrite(dirHandle, file, token)
+        fetchAndWrite(dirHandle, file, fetchFile, cancelState)
           .then(() => {
+            rollbackEntries.push(file.rollbackEntry);
             state.completed++;
             running--;
             onProgress({ ...state });
             processNext();
           })
           .catch((err) => {
-            state.errors.push(`${file.targetPath}: ${err.message || err}`);
+            if (!isCancellationError(err)) {
+              state.errors.push(`${file.targetPath}: ${err.message || err}`);
+            }
             state.completed++;
             running--;
             onProgress({ ...state });
@@ -276,21 +308,102 @@ export async function writeFiles(dirHandle, files, options = {}) {
     processNext();
   });
 
+  if (cancelState.cancelled) {
+    const rolledBack = await rollbackWrittenFiles(dirHandle, rollbackEntries);
+    return {
+      completed: state.completed,
+      errors: [],
+      cancelled: true,
+      rolledBack
+    };
+  }
+
   return { completed: state.completed, errors: state.errors };
 }
 
 /**
  * Fetch a file and write it to the directory.
  */
-async function fetchAndWrite(dirHandle, file, token) {
-  const headers = {};
-  if (token) headers['Authorization'] = `token ${token}`;
+async function fetchAndWrite(dirHandle, file, fetchFile, cancelState) {
+  throwIfCancelled(cancelState);
+  let data;
 
-  const res = await fetch(file.downloadUrl, { headers });
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+  if (fetchFile) {
+    data = await fetchFile(file);
+  } else {
+    const res = await fetch(file.downloadUrl);
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
+    data = await res.blob();
   }
 
-  const blob = await res.blob();
-  await writeFile(dirHandle, file.targetPath, blob);
+  throwIfCancelled(cancelState);
+  file.rollbackEntry = await writeFile(dirHandle, file.targetPath, data);
+}
+
+function throwIfCancelled(cancelState) {
+  if (cancelState?.cancelled) {
+    const error = new Error('Download canceled');
+    error.code = CANCELLED_ERROR;
+    throw error;
+  }
+}
+
+function isCancellationError(error) {
+  return error?.code === CANCELLED_ERROR;
+}
+
+async function rollbackWrittenFiles(dirHandle, rollbackEntries) {
+  const uniqueEntries = dedupeRollbackEntries(rollbackEntries).sort((left, right) => right.targetPath.length - left.targetPath.length);
+  let rolledBack = 0;
+
+  for (const entry of uniqueEntries) {
+    try {
+      await rollbackWrittenPath(dirHandle, entry);
+      rolledBack++;
+    } catch {}
+  }
+
+  return rolledBack;
+}
+
+async function rollbackWrittenPath(dirHandle, entry) {
+  if (entry.existed && entry.previousData) {
+    await writeFile(dirHandle, entry.targetPath, entry.previousData);
+    return;
+  }
+
+  const parts = entry.targetPath.split('/').filter(Boolean);
+  const fileName = parts.pop();
+  if (!fileName) return;
+
+  let current = dirHandle;
+  const directories = [];
+
+  for (const dirName of parts) {
+    directories.push({ parent: current, name: dirName });
+    current = await current.getDirectoryHandle(dirName);
+  }
+
+  await current.removeEntry(fileName);
+
+  for (let idx = directories.length - 1; idx >= 0; idx--) {
+    const { parent, name } = directories[idx];
+    try {
+      await parent.removeEntry(name);
+    } catch {
+      break;
+    }
+  }
+}
+
+function dedupeRollbackEntries(entries) {
+  const byPath = new Map();
+  for (const entry of entries) {
+    if (entry?.targetPath) {
+      byPath.set(entry.targetPath, entry);
+    }
+  }
+  return Array.from(byPath.values());
 }

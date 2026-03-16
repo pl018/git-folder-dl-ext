@@ -86,6 +86,10 @@ export async function getTree(owner, repo, branch, token) {
     `https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`,
     token
   );
+  if (!Array.isArray(data?.tree)) {
+    const apiMessage = typeof data?.message === 'string' ? ` ${data.message}` : '';
+    throw new Error(`GitHub tree response was invalid for ${owner}/${repo}@${branch}.${apiMessage}`.trim());
+  }
   return data.tree.map(item => ({
     path: item.path,
     type: item.type,
@@ -104,6 +108,10 @@ export async function getTree(owner, repo, branch, token) {
  * @returns {Array<{path: string, type: string, sha: string, size?: number, url: string}>}
  */
 export function filterTree(tree, folderPath) {
+  if (!Array.isArray(tree)) {
+    return [];
+  }
+
   // Normalise: strip leading/trailing slashes
   const prefix = folderPath.replace(/^\/+|\/+$/g, '');
 

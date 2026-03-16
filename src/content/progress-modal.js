@@ -33,6 +33,7 @@ export function showProgressModal({ onCancel }) {
  */
 export function updateProgress({ completed, total, currentFile, errors = [] }) {
   if (!_container) return;
+  const normalizedErrors = Array.isArray(errors) ? errors : [];
 
   const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
   const fill = _container.querySelector('.gfdl-progress__fill');
@@ -44,8 +45,8 @@ export function updateProgress({ completed, total, currentFile, errors = [] }) {
   if (text) text.textContent = total > 0 ? `DOWNLOADING ${completed} OF ${total}` : 'PREPARING DOWNLOAD';
   if (file) file.textContent = currentFile || '';
 
-  if (errors.length > 0 && errorCount) {
-    errorCount.textContent = `${errors.length} ERROR${errors.length > 1 ? 'S' : ''}`;
+  if (normalizedErrors.length > 0 && errorCount) {
+    errorCount.textContent = `${normalizedErrors.length} ERROR${normalizedErrors.length > 1 ? 'S' : ''}`;
     errorCount.style.display = 'block';
 
     let detailEl = _container.querySelector('.gfdl-progress__error-details');
@@ -54,16 +55,17 @@ export function updateProgress({ completed, total, currentFile, errors = [] }) {
       detailEl.className = 'gfdl-progress__error-details';
       errorCount.parentNode.insertBefore(detailEl, errorCount.nextSibling);
     }
-    detailEl.innerHTML = errors.map((error) => `<div class="gfdl-progress__error-line">${escapeHtml(error)}</div>`).join('');
+    detailEl.innerHTML = normalizedErrors.map((error) => `<div class="gfdl-progress__error-line">${escapeHtml(error)}</div>`).join('');
   }
 }
 
 /**
  * Show completion state.
- * @param {{ total: number, errors: string[] }} result
+ * @param {{ total: number, errors: string[], cancelled?: boolean, rolledBack?: number }} result
  */
-export function showComplete({ total, errors = [] }) {
+export function showComplete({ total, errors = [], cancelled = false, rolledBack = 0 }) {
   if (!_container) return;
+  const normalizedErrors = Array.isArray(errors) ? errors : [];
 
   const text = _container.querySelector('.gfdl-progress__text');
   const file = _container.querySelector('.gfdl-progress__file');
@@ -72,17 +74,23 @@ export function showComplete({ total, errors = [] }) {
 
   if (fill) fill.style.width = '100%';
   if (text) {
-    text.textContent = errors.length > 0
-      ? `COMPLETED WITH ${errors.length} ERROR${errors.length > 1 ? 'S' : ''}`
+    text.textContent = cancelled
+      ? 'DOWNLOAD CANCELED'
+      : normalizedErrors.length > 0
+      ? `COMPLETED WITH ${normalizedErrors.length} ERROR${normalizedErrors.length > 1 ? 'S' : ''}`
       : `${total} FILE${total > 1 ? 'S' : ''} DOWNLOADED`;
   }
-  if (file) file.textContent = '';
+  if (file) {
+    file.textContent = cancelled && rolledBack > 0
+      ? `Rolled back ${rolledBack} file${rolledBack > 1 ? 's' : ''}.`
+      : '';
+  }
   if (cancelBtn) cancelBtn.textContent = 'CLOSE';
 
-  if (errors.length > 0 && _container) {
+  if (normalizedErrors.length > 0 && _container) {
     const errorCount = _container.querySelector('.gfdl-progress__errors');
     if (errorCount) {
-      errorCount.textContent = `${errors.length} ERROR${errors.length > 1 ? 'S' : ''}`;
+      errorCount.textContent = `${normalizedErrors.length} ERROR${normalizedErrors.length > 1 ? 'S' : ''}`;
       errorCount.style.display = 'block';
     }
 
@@ -93,7 +101,7 @@ export function showComplete({ total, errors = [] }) {
       detailEl.className = 'gfdl-progress__error-details';
       insertAfter.parentNode.insertBefore(detailEl, insertAfter.nextSibling);
     }
-    detailEl.innerHTML = errors.map((error) => `<div class="gfdl-progress__error-line">${escapeHtml(error)}</div>`).join('');
+    detailEl.innerHTML = normalizedErrors.map((error) => `<div class="gfdl-progress__error-line">${escapeHtml(error)}</div>`).join('');
   }
 }
 
@@ -108,7 +116,11 @@ export function hideProgressModal() {
 }
 
 function escapeHtml(str) {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 function getTemplate() {
@@ -246,7 +258,7 @@ function getTemplate() {
         <div class="gfdl-progress__file"></div>
         <div class="gfdl-progress__errors"></div>
         <div class="gfdl-progress__actions">
-          <button class="gfdl-progress__cancel">HIDE</button>
+          <button class="gfdl-progress__cancel">CANCEL</button>
         </div>
       </div>
     </div>

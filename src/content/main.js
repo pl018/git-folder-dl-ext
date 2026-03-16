@@ -15,10 +15,11 @@ import {
 } from './checkbox-injector.js';
 import { initOverlayBar, updateOverlayBar } from './overlay-bar.js';
 import { showProgressModal, updateProgress, showComplete, hideProgressModal } from './progress-modal.js';
-import { ensureWritableDirectory, writeFiles } from '../lib/file-writer.js';
+import { createCancelState, cancelWriteJob, ensureWritableDirectory, writeFiles } from '../lib/file-writer.js';
 import { DIRECTORY_ACCESS_STATES } from '../lib/directory-state.js';
 
 const LOG = '[GFDL]';
+let activeCancelState = null;
 
 async function safeSendMessage(message) {
   try {
@@ -75,9 +76,23 @@ async function handleDownload() {
 
   showProgressModal({
     onCancel: () => {
+      if (activeCancelState) {
+        cancelWriteJob(activeCancelState);
+        updateProgress({
+          completed: 0,
+          total: 0,
+          currentFile: 'Canceling download and rolling back files...',
+          errors: []
+        });
+        return;
+      }
+
       hideProgressModal();
     }
   });
+
+  const cancelState = createCancelState();
+  activeCancelState = cancelState;
 
   updateProgress({
     completed: 0,
@@ -97,17 +112,24 @@ async function handleDownload() {
   });
 
   if (!response) {
+    activeCancelState = null;
     showComplete({ total: 0, errors: ['Extension context lost. Reload page.'] });
     return;
   }
 
   if (!response.ok) {
+    activeCancelState = null;
     showComplete({ total: 0, errors: [response.error] });
     return;
   }
 
+  if (cancelState.cancelled) {
+    activeCancelState = null;
+    handleComplete({ total: 0, errors: [], cancelled: true, rolledBack: 0 });
+    return;
+  }
+
   const settings = await chrome.storage.local.get({
-    githubToken: null,
     concurrentDownloads: 3
   });
 
@@ -119,26 +141,54 @@ async function handleDownload() {
   });
 
   const result = await writeFiles(directoryResult.handle, response.manifest.entries, {
-    token: settings.githubToken,
     concurrency: settings.concurrentDownloads,
+    cancelState,
+    fetchFile: fetchFileFromBackground,
     onProgress: (progress) => updateProgress(progress)
   });
+  activeCancelState = null;
 
   handleComplete({
     total: result.completed,
     errors: result.errors,
-    rootPath: response.manifest.rootPath
+    rootPath: response.manifest.rootPath,
+    cancelled: result.cancelled,
+    rolledBack: result.rolledBack
   });
 }
 
 async function handleComplete(payload) {
+  activeCancelState = null;
+
+  if (payload.cancelled) {
+    showComplete(payload);
+    return;
+  }
+
   const noErrors = !payload.errors || payload.errors.length === 0;
 
   let autoModeEnabled = false;
+  let openAfterDownload = false;
+  let nativeFolderPath = '';
   try {
-    const result = await chrome.storage.local.get({ autoMode: false });
+    const result = await chrome.storage.local.get({
+      autoMode: false,
+      openAfterDownload: false,
+      nativeFolderPath: ''
+    });
     autoModeEnabled = result.autoMode;
+    openAfterDownload = result.openAfterDownload;
+    nativeFolderPath = result.nativeFolderPath;
   } catch {}
+
+  if (noErrors && openAfterDownload && nativeFolderPath) {
+    try {
+      await safeSendMessage({
+        type: 'OPEN_NATIVE_FOLDER',
+        payload: { path: nativeFolderPath }
+      });
+    } catch {}
+  }
 
   if (autoModeEnabled && noErrors) {
     showComplete(payload);
@@ -159,4 +209,25 @@ function getDirectoryErrorMessage(reason) {
   }
 
   return 'Choose a target folder to continue.';
+}
+
+async function fetchFileFromBackground(file) {
+  const response = await safeSendMessage({
+    type: 'FETCH_FILE_BYTES',
+    payload: { downloadUrl: file.downloadUrl }
+  });
+
+  if (!response) {
+    throw new Error('Extension context lost while fetching file content.');
+  }
+
+  if (!response.ok) {
+    throw new Error(response.error || 'Failed to fetch file content.');
+  }
+
+  if (!Array.isArray(response.bytes)) {
+    throw new Error('Background fetch returned an invalid byte payload.');
+  }
+
+  return new Uint8Array(response.bytes);
 }

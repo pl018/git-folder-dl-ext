@@ -5,6 +5,7 @@
 
 const { describe, it } = require('node:test');
 const assert = require('node:assert');
+const { loadSourceModule } = require('./load-source');
 
 // Since we're testing ES modules in a non-module context,
 // we test the pure functions by re-implementing the logic.
@@ -104,5 +105,26 @@ describe('buildRawUrl', () => {
   it('constructs correct URL', () => {
     const url = buildRawUrl('owner', 'repo', 'main', 'src/index.js');
     assert.strictEqual(url, 'https://raw.githubusercontent.com/owner/repo/main/src/index.js');
+  });
+});
+
+describe('getTree', () => {
+  it('throws a readable error when GitHub returns no tree array', async () => {
+    const { getTree } = loadSourceModule(
+      'src/lib/github-api.js',
+      ['getTree'],
+      {
+        fetch: async () => ({
+          ok: true,
+          headers: { get: () => null },
+          json: async () => ({ message: 'Not Found' })
+        })
+      }
+    );
+
+    await assert.rejects(
+      () => getTree('owner', 'repo', 'main', null),
+      /GitHub tree response was invalid for owner\/repo@main\. Not Found/
+    );
   });
 });

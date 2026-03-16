@@ -4,7 +4,8 @@
   "version": "1.0.0",
   "description": "Download folders from GitHub repositories as actual file structures — no zipping.",
   "permissions": [
-    "storage"
+    "storage",
+    "nativeMessaging"
   ],
   "host_permissions": [
     "https://github.com/*",

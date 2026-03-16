@@ -30,8 +30,10 @@ Click the extension icon to open the popup:
 
 - **Authentication** — Paste a GitHub PAT (`ghp_...`) for private repo access
 - **Target Folder Access** — Grant a folder once; the extension writes directly there
+- **Open Folder Link** — Optional Windows helper link so the extension can open the target folder in Explorer after a successful run
 - **Subfolder Prefix** — Optional subfolder inside the granted target folder
 - **Auto Mode** — Toggle for hands-free download workflow
+- **Open Folder After Download** — Opens the linked OS folder after a clean download
 - **Concurrent Downloads** — 1–6 parallel file downloads
 
 ## How It Works
@@ -93,6 +95,21 @@ npm test               # Run CDP smoke tests (requires headed Chrome)
 - The extension does not silently fall back to browser-managed Downloads.
 - Output paths are always rooted at `<target>/<optional-prefix>/<repo>/...`.
 - If folder access expires, the next download prompts for reauthorization before any files are written.
+
+## Windows Native Helper
+
+To enable `OPEN FOLDER AFTER DOWNLOAD`, install the native helper once:
+
+1. Load the unpacked extension from `dist/`.
+2. Copy the extension ID from the popup.
+3. Run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/install-native-host.ps1 -ExtensionId <your-extension-id>
+```
+
+4. Reload the extension.
+5. In the popup, grant `TARGET FOLDER ACCESS`, then use `LINK` under `OPEN FOLDER LINK` and choose the same folder path for Explorer-open support.
 
 ## License
 
