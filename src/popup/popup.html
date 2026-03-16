@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GitHub Folder Downloader</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup">
+    <header class="popup__header">
+      <h1 class="popup__title">GFDL</h1>
+      <span class="popup__version">v1.0</span>
+    </header>
+
+    <!-- Auth Section -->
+    <section class="popup__section">
+      <div class="popup__label">AUTHENTICATION</div>
+      <div class="auth-status" id="authStatus">
+        <span class="auth-status__dot" id="authDot"></span>
+        <span class="auth-status__text" id="authText">Checking...</span>
+      </div>
+
+      <div class="auth-actions" id="authActions" style="display:none;">
+        <button class="btn-neo btn-neo--accent" id="connectBtn">CONNECT WITH GITHUB</button>
+
+        <div class="auth-toggle" id="patToggle">
+          <button class="btn-neo btn-neo--ghost" id="showPatBtn">PASTE TOKEN</button>
+        </div>
+
+        <div class="pat-input" id="patSection" style="display:none;">
+          <input type="password" class="input-neo" id="patInput" placeholder="ghp_xxxxxxxxxxxx">
+          <button class="btn-neo btn-neo--accent btn-neo--sm" id="savePatBtn">SAVE</button>
+        </div>
+      </div>
+
+      <div class="auth-connected" id="authConnected" style="display:none;">
+        <span class="auth-user" id="authUser"></span>
+        <button class="btn-neo btn-neo--ghost btn-neo--sm" id="disconnectBtn">DISCONNECT</button>
+      </div>
+    </section>
+
+    <!-- Device Flow Section (shown during OAuth) -->
+    <section class="popup__section" id="deviceFlowSection" style="display:none;">
+      <div class="popup__label">ENTER CODE ON GITHUB</div>
+      <div class="device-code" id="deviceCode"></div>
+      <div class="device-hint">Code copied to clipboard. Paste it on the GitHub page that opened.</div>
+    </section>
+
+    <!-- Settings Section -->
+    <section class="popup__section">
+      <div class="popup__label">SETTINGS</div>
+
+      <div class="setting">
+        <label class="setting__label">DEFAULT DOWNLOAD PATH</label>
+        <div class="path-picker">
+          <span class="path-picker__value" id="downloadPathDisplay">Not set</span>
+          <button class="btn-neo btn-neo--sm" id="pickFolderBtn">BROWSE</button>
+          <button class="btn-neo btn-neo--ghost btn-neo--sm" id="clearFolderBtn" style="display:none;">CLEAR</button>
+        </div>
+        <span class="setting__hint">Files download here — no prompts</span>
+      </div>
+
+      <div class="setting">
+        <label class="setting__label" for="downloadPrefix">SUBFOLDER PREFIX</label>
+        <input type="text" class="input-neo" id="downloadPrefix" placeholder="github-downloads">
+        <span class="setting__hint">Optional subfolder inside download path</span>
+      </div>
+
+      <div class="setting setting--row">
+        <label class="setting__label" for="autoMode">AUTO MODE</label>
+        <input type="checkbox" class="toggle-neo" id="autoMode">
+      </div>
+      <span class="setting__hint setting__hint--below">Download, clear selections, and close progress automatically</span>
+
+      <div class="setting setting--row">
+        <label class="setting__label" for="openAfterDownload">OPEN FOLDER AFTER DOWNLOAD</label>
+        <input type="checkbox" class="toggle-neo" id="openAfterDownload">
+      </div>
+
+      <div class="setting">
+        <label class="setting__label" for="concurrency">CONCURRENT DOWNLOADS</label>
+        <div class="setting__slider">
+          <input type="range" class="range-neo" id="concurrency" min="1" max="6" value="3">
+          <span class="setting__value" id="concurrencyValue">3</span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
