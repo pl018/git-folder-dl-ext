@@ -5,8 +5,9 @@ Chrome extension (Manifest V3) that lets you select and download folders from an
 ## Features
 
 - **Checkbox selection** on GitHub file browser rows (ghost-on-hover, shift+click range select)
-- **Folder downloads** preserving directory structure
-- **Two download modes**: File System Access API (any folder) or chrome.downloads (Downloads folder)
+- **Direct folder writes** into a granted target folder with no per-file browser save prompts
+- **Deterministic output layout** under `<target>/<optional-prefix>/<repo>/...`
+- **Deduplicated mixed selections** so folder + nested file selections only save once
 - **Auto mode**: download, clear selections, and close progress automatically
 - **GitHub auth**: OAuth Device Flow or Personal Access Token
 - **Neobrutalist dark UI**: lime `#ccff00` accent on dark `#09090b`, hard shadows, uppercase labels
@@ -28,8 +29,8 @@ npm run build
 Click the extension icon to open the popup:
 
 - **Authentication** — Paste a GitHub PAT (`ghp_...`) for private repo access
-- **Default Download Path** — Click Browse to pick any folder on your system
-- **Subfolder Prefix** — Optional subfolder inside the download path
+- **Target Folder Access** — Grant a folder once; the extension writes directly there
+- **Subfolder Prefix** — Optional subfolder inside the granted target folder
 - **Auto Mode** — Toggle for hands-free download workflow
 - **Concurrent Downloads** — 1–6 parallel file downloads
 
@@ -39,7 +40,8 @@ Click the extension icon to open the popup:
 2. Hover over file/folder rows to reveal checkboxes
 3. Select folders or files
 4. Click the **DOWNLOAD** button on the floating bar
-5. Files write directly to your chosen directory
+5. If folder access is missing or expired, reauthorize once
+6. Files write directly to `<target>/<optional-prefix>/<repo>/...`
 
 ## Project Structure
 
@@ -58,8 +60,9 @@ src/
   popup/
     popup.html/js/css        # Settings and auth UI
   lib/
+    directory-state.js       # Folder access state helpers
+    download-plan.js         # Deduplicated manifest builder
     github-api.js            # GitHub Trees API client
-    download-manager.js      # chrome.downloads orchestration
     file-writer.js           # File System Access API writer
     auth.js                  # OAuth + PAT authentication
     storage.js               # chrome.storage.local wrapper
@@ -83,6 +86,13 @@ npm run build          # Bundle to dist/
 npm run test:unit      # Run unit tests
 npm test               # Run CDP smoke tests (requires headed Chrome)
 ```
+
+## Direct-Write Contract
+
+- Automated downloads always require a writable folder handle.
+- The extension does not silently fall back to browser-managed Downloads.
+- Output paths are always rooted at `<target>/<optional-prefix>/<repo>/...`.
+- If folder access expires, the next download prompts for reauthorization before any files are written.
 
 ## License
 

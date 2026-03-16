@@ -5,9 +5,10 @@
 const DEFAULTS = {
   githubToken: null,
   tokenType: null,        // 'oauth' | 'pat'
-  downloadPrefix: '',     // subfolder prefix under Downloads
-  defaultDownloadPath: '',// absolute path override (used as chrome.downloads default dir)
-  openAfterDownload: false,
+  downloadPrefix: '',     // optional subfolder prefix inside the granted target folder
+  downloadDirectoryName: '',
+  hasDirectoryHandle: false,
+  directoryAccessState: 'folder-missing',
   autoMode: false,        // auto-download: clear checkboxes + close progress on success
   concurrentDownloads: 3
 };

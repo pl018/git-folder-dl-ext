@@ -97,6 +97,11 @@ async function runTests() {
       const title = await popupPage.$eval('.popup__title', el => el.textContent);
       if (title !== 'GFDL') throw new Error(`Expected title "GFDL", got "${title}"`);
 
+      const folderLabel = await popupPage.$eval('.setting__label', el => el.textContent);
+      if (!folderLabel.includes('TARGET')) {
+        throw new Error(`Expected target folder setting label, got "${folderLabel}"`);
+      }
+
       await popupPage.close();
     }, results);
 

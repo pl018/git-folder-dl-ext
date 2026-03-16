@@ -13,7 +13,6 @@
       <span class="popup__version">v1.0</span>
     </header>
 
-    <!-- Auth Section -->
     <section class="popup__section">
       <div class="popup__label">AUTHENTICATION</div>
       <div class="auth-status" id="authStatus">
@@ -40,31 +39,29 @@
       </div>
     </section>
 
-    <!-- Device Flow Section (shown during OAuth) -->
     <section class="popup__section" id="deviceFlowSection" style="display:none;">
       <div class="popup__label">ENTER CODE ON GITHUB</div>
       <div class="device-code" id="deviceCode"></div>
       <div class="device-hint">Code copied to clipboard. Paste it on the GitHub page that opened.</div>
     </section>
 
-    <!-- Settings Section -->
     <section class="popup__section">
       <div class="popup__label">SETTINGS</div>
 
       <div class="setting">
-        <label class="setting__label">DEFAULT DOWNLOAD PATH</label>
+        <label class="setting__label">TARGET FOLDER ACCESS</label>
         <div class="path-picker">
           <span class="path-picker__value" id="downloadPathDisplay">Not set</span>
           <button class="btn-neo btn-neo--sm" id="pickFolderBtn">BROWSE</button>
           <button class="btn-neo btn-neo--ghost btn-neo--sm" id="clearFolderBtn" style="display:none;">CLEAR</button>
         </div>
-        <span class="setting__hint">Files download here — no prompts</span>
+        <span class="setting__hint">Direct saves write here with no per-file browser prompts</span>
       </div>
 
       <div class="setting">
         <label class="setting__label" for="downloadPrefix">SUBFOLDER PREFIX</label>
         <input type="text" class="input-neo" id="downloadPrefix" placeholder="github-downloads">
-        <span class="setting__hint">Optional subfolder inside download path</span>
+        <span class="setting__hint">Optional subfolder inside the granted target folder</span>
       </div>
 
       <div class="setting setting--row">
@@ -72,11 +69,6 @@
         <input type="checkbox" class="toggle-neo" id="autoMode">
       </div>
       <span class="setting__hint setting__hint--below">Download, clear selections, and close progress automatically</span>
-
-      <div class="setting setting--row">
-        <label class="setting__label" for="openAfterDownload">OPEN FOLDER AFTER DOWNLOAD</label>
-        <input type="checkbox" class="toggle-neo" id="openAfterDownload">
-      </div>
 
       <div class="setting">
         <label class="setting__label" for="concurrency">CONCURRENT DOWNLOADS</label>

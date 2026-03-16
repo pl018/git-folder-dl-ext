@@ -7,15 +7,13 @@ import { addToShadow } from './shadow-host.js';
 
 let _container = null;
 let _onCancel = null;
-let _onOpenFolder = null;
 
 /**
  * Show the progress modal.
- * @param {{ onCancel: () => void, onOpenFolder: () => void }} handlers
+ * @param {{ onCancel: () => void }} handlers
  */
-export function showProgressModal({ onCancel, onOpenFolder }) {
+export function showProgressModal({ onCancel }) {
   _onCancel = onCancel;
-  _onOpenFolder = onOpenFolder;
 
   if (_container) _container.remove();
 
@@ -27,13 +25,6 @@ export function showProgressModal({ onCancel, onOpenFolder }) {
   _container.querySelector('.gfdl-progress__cancel').addEventListener('click', () => {
     _onCancel?.();
   });
-
-  _container.querySelector('.gfdl-progress__open').addEventListener('click', () => {
-    _onOpenFolder?.();
-  });
-
-  // Initially hide open button
-  _container.querySelector('.gfdl-progress__open').style.display = 'none';
 }
 
 /**
@@ -50,20 +41,20 @@ export function updateProgress({ completed, total, currentFile, errors = [] }) {
   const errorCount = _container.querySelector('.gfdl-progress__errors');
 
   if (fill) fill.style.width = `${pct}%`;
-  if (text) text.textContent = `DOWNLOADING ${completed} OF ${total}`;
+  if (text) text.textContent = total > 0 ? `DOWNLOADING ${completed} OF ${total}` : 'PREPARING DOWNLOAD';
   if (file) file.textContent = currentFile || '';
 
   if (errors.length > 0 && errorCount) {
     errorCount.textContent = `${errors.length} ERROR${errors.length > 1 ? 'S' : ''}`;
     errorCount.style.display = 'block';
-    // Show full error details below the count
+
     let detailEl = _container.querySelector('.gfdl-progress__error-details');
     if (!detailEl) {
       detailEl = document.createElement('div');
       detailEl.className = 'gfdl-progress__error-details';
       errorCount.parentNode.insertBefore(detailEl, errorCount.nextSibling);
     }
-    detailEl.innerHTML = errors.map(e => `<div class="gfdl-progress__error-line">${escapeHtml(e)}</div>`).join('');
+    detailEl.innerHTML = errors.map((error) => `<div class="gfdl-progress__error-line">${escapeHtml(error)}</div>`).join('');
   }
 }
 
@@ -78,23 +69,23 @@ export function showComplete({ total, errors = [] }) {
   const file = _container.querySelector('.gfdl-progress__file');
   const fill = _container.querySelector('.gfdl-progress__fill');
   const cancelBtn = _container.querySelector('.gfdl-progress__cancel');
-  const openBtn = _container.querySelector('.gfdl-progress__open');
 
   if (fill) fill.style.width = '100%';
-  if (text) text.textContent = errors.length > 0
-    ? `COMPLETED WITH ${errors.length} ERROR${errors.length > 1 ? 'S' : ''}`
-    : `${total} FILE${total > 1 ? 'S' : ''} DOWNLOADED`;
+  if (text) {
+    text.textContent = errors.length > 0
+      ? `COMPLETED WITH ${errors.length} ERROR${errors.length > 1 ? 'S' : ''}`
+      : `${total} FILE${total > 1 ? 'S' : ''} DOWNLOADED`;
+  }
   if (file) file.textContent = '';
   if (cancelBtn) cancelBtn.textContent = 'CLOSE';
-  if (openBtn) openBtn.style.display = 'inline-flex';
 
-  // Show error details on completion
   if (errors.length > 0 && _container) {
     const errorCount = _container.querySelector('.gfdl-progress__errors');
     if (errorCount) {
       errorCount.textContent = `${errors.length} ERROR${errors.length > 1 ? 'S' : ''}`;
       errorCount.style.display = 'block';
     }
+
     let detailEl = _container.querySelector('.gfdl-progress__error-details');
     if (!detailEl) {
       const insertAfter = errorCount || _container.querySelector('.gfdl-progress__file');
@@ -102,7 +93,7 @@ export function showComplete({ total, errors = [] }) {
       detailEl.className = 'gfdl-progress__error-details';
       insertAfter.parentNode.insertBefore(detailEl, insertAfter.nextSibling);
     }
-    detailEl.innerHTML = errors.map(e => `<div class="gfdl-progress__error-line">${escapeHtml(e)}</div>`).join('');
+    detailEl.innerHTML = errors.map((error) => `<div class="gfdl-progress__error-line">${escapeHtml(error)}</div>`).join('');
   }
 }
 
@@ -244,31 +235,6 @@ function getTemplate() {
       .gfdl-progress__cancel:active {
         transform: translate(2px, 2px);
       }
-
-      .gfdl-progress__open {
-        display: inline-flex;
-        align-items: center;
-        height: 36px;
-        padding: 0 16px;
-        background: #ccff00;
-        color: #000000;
-        border: 1px solid #ccff00;
-        border-radius: 6px;
-        font-size: 12px;
-        font-weight: 700;
-        letter-spacing: 0.03em;
-        text-transform: uppercase;
-        cursor: pointer;
-        transition: all 0.15s ease-in-out;
-      }
-
-      .gfdl-progress__open:hover {
-        background: #b3e600;
-      }
-
-      .gfdl-progress__open:active {
-        transform: translate(2px, 2px);
-      }
     </style>
 
     <div class="gfdl-progress-overlay">
@@ -280,8 +246,7 @@ function getTemplate() {
         <div class="gfdl-progress__file"></div>
         <div class="gfdl-progress__errors"></div>
         <div class="gfdl-progress__actions">
-          <button class="gfdl-progress__cancel">CANCEL</button>
-          <button class="gfdl-progress__open">OPEN FOLDER</button>
+          <button class="gfdl-progress__cancel">HIDE</button>
         </div>
       </div>
     </div>

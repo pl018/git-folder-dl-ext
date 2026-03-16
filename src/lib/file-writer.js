@@ -4,6 +4,8 @@
  * Stores the directory handle in IndexedDB for persistence across sessions.
  */
 
+import { DIRECTORY_ACCESS_STATES, resolveDirectoryAccessState } from './directory-state.js';
+
 const DB_NAME = 'gfdl-storage';
 const STORE_NAME = 'handles';
 const HANDLE_KEY = 'downloadDir';
@@ -53,20 +55,37 @@ async function clearHandle() {
 
 // ---- Public API ----
 
+async function syncDirectoryMetadata({ handle = null, accessState }) {
+  if (typeof chrome === 'undefined' || !chrome.storage?.local) return;
+
+  await chrome.storage.local.set({
+    downloadDirectoryName: handle?.name || '',
+    hasDirectoryHandle: !!handle,
+    directoryAccessState: accessState
+  });
+}
+
 /**
  * Check if we have a stored directory handle with write permission.
- * @returns {Promise<{ hasHandle: boolean, name: string|null }>}
+ * @returns {Promise<{ hasHandle: boolean, name: string|null, accessState: string }>}
  */
 export async function checkStoredDirectory() {
   try {
     const handle = await loadHandle();
-    if (!handle) return { hasHandle: false, name: null };
+    if (!handle) {
+      const accessState = DIRECTORY_ACCESS_STATES.MISSING;
+      await syncDirectoryMetadata({ handle: null, accessState });
+      return { hasHandle: false, name: null, accessState };
+    }
 
-    // Verify permission is still granted
     const perm = await handle.queryPermission({ mode: 'readwrite' });
-    return { hasHandle: perm === 'granted', name: handle.name };
+    const accessState = resolveDirectoryAccessState(true, perm);
+    await syncDirectoryMetadata({ handle, accessState });
+    return { hasHandle: true, name: handle.name, accessState };
   } catch {
-    return { hasHandle: false, name: null };
+    const accessState = DIRECTORY_ACCESS_STATES.MISSING;
+    await syncDirectoryMetadata({ handle: null, accessState });
+    return { hasHandle: false, name: null, accessState };
   }
 }
 
@@ -80,11 +99,9 @@ export async function getDirectory() {
     const handle = await loadHandle();
     if (!handle) return null;
 
-    // Check current permission
     let perm = await handle.queryPermission({ mode: 'readwrite' });
     if (perm === 'granted') return handle;
 
-    // Try to request permission (requires user gesture context)
     perm = await handle.requestPermission({ mode: 'readwrite' });
     return perm === 'granted' ? handle : null;
   } catch {
@@ -93,14 +110,74 @@ export async function getDirectory() {
 }
 
 /**
- * Prompt the user to pick a download directory.
- * Must be called from a user gesture (click handler).
- * Stores the handle for future use.
+ * Ensure we have a writable directory handle for direct saves.
+ * Must be called from a user gesture when prompting is enabled.
+ * @returns {Promise<{ ok: boolean, handle: FileSystemDirectoryHandle|null, name: string|null, reason: string }>}
+ */
+export async function ensureWritableDirectory(options = {}) {
+  const {
+    promptIfMissing = false,
+    promptIfExpired = false
+  } = options;
+
+  let handle = null;
+  let hadStoredHandle = false;
+
+  try {
+    handle = await loadHandle();
+    hadStoredHandle = !!handle;
+
+    if (!handle) {
+      if (!promptIfMissing) {
+        const reason = DIRECTORY_ACCESS_STATES.MISSING;
+        await syncDirectoryMetadata({ handle: null, accessState: reason });
+        return { ok: false, handle: null, name: null, reason };
+      }
+
+      handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+      await storeHandle(handle);
+    }
+
+    let permission = await handle.queryPermission({ mode: 'readwrite' });
+    if (permission !== 'granted' && promptIfExpired) {
+      permission = await handle.requestPermission({ mode: 'readwrite' });
+    }
+
+    const reason = resolveDirectoryAccessState(true, permission);
+    await syncDirectoryMetadata({ handle, accessState: reason });
+
+    if (permission !== 'granted') {
+      return { ok: false, handle: null, name: handle.name, reason };
+    }
+
+    return {
+      ok: true,
+      handle,
+      name: handle.name,
+      reason: DIRECTORY_ACCESS_STATES.READY
+    };
+  } catch (error) {
+    const reason = hadStoredHandle
+      ? DIRECTORY_ACCESS_STATES.EXPIRED
+      : DIRECTORY_ACCESS_STATES.MISSING;
+
+    await syncDirectoryMetadata({ handle, accessState: reason });
+
+    if (error?.name === 'AbortError') {
+      return { ok: false, handle: null, name: handle?.name || null, reason };
+    }
+    throw error;
+  }
+}
+
+/**
+ * Prompt the user to pick a new download directory and persist it.
  * @returns {Promise<FileSystemDirectoryHandle>}
  */
 export async function pickDirectory() {
   const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
   await storeHandle(handle);
+  await syncDirectoryMetadata({ handle, accessState: DIRECTORY_ACCESS_STATES.READY });
   console.log('[GFDL] Directory selected:', handle.name);
   return handle;
 }
@@ -110,12 +187,13 @@ export async function pickDirectory() {
  */
 export async function forgetDirectory() {
   await clearHandle();
+  await syncDirectoryMetadata({ handle: null, accessState: DIRECTORY_ACCESS_STATES.MISSING });
 }
 
 /**
  * Write a single file to the directory, creating subdirectories as needed.
  * @param {FileSystemDirectoryHandle} dirHandle
- * @param {string} relativePath - e.g. "src/components/Button.tsx"
+ * @param {string} relativePath - e.g. "repo/src/components/Button.tsx"
  * @param {Blob|ArrayBuffer|string} data
  */
 export async function writeFile(dirHandle, relativePath, data) {
@@ -141,7 +219,7 @@ export async function writeFile(dirHandle, relativePath, data) {
  * Fetches each file from its URL and writes to the target directory.
  *
  * @param {FileSystemDirectoryHandle} dirHandle
- * @param {Array<{relativePath: string, downloadUrl: string}>} files
+ * @param {Array<{targetPath: string, downloadUrl: string}>} files
  * @param {Object} options
  * @param {string|null} [options.token] - GitHub auth token
  * @param {number} [options.concurrency=3] - Max concurrent downloads
@@ -171,7 +249,7 @@ export async function writeFiles(dirHandle, files, options = {}) {
       while (running < concurrency && fileIndex < files.length) {
         const file = files[fileIndex++];
         running++;
-        state.currentFile = file.relativePath;
+        state.currentFile = file.targetPath;
         onProgress({ ...state });
 
         fetchAndWrite(dirHandle, file, token)
@@ -182,7 +260,7 @@ export async function writeFiles(dirHandle, files, options = {}) {
             processNext();
           })
           .catch((err) => {
-            state.errors.push(`${file.relativePath}: ${err.message || err}`);
+            state.errors.push(`${file.targetPath}: ${err.message || err}`);
             state.completed++;
             running--;
             onProgress({ ...state });
@@ -214,5 +292,5 @@ async function fetchAndWrite(dirHandle, file, token) {
   }
 
   const blob = await res.blob();
-  await writeFile(dirHandle, file.relativePath, blob);
+  await writeFile(dirHandle, file.targetPath, blob);
 }

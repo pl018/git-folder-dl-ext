@@ -1,6 +1,7 @@
 /**
  * Content Script Entry Point
- * Sends download requests to service worker. Does NOT do file I/O.
+ * Resolves download plans in the service worker and writes files directly from
+ * the user-gesture context.
  */
 
 import { observeNavigation, isFileBrowserPage, parseCurrentUrl } from './github-observer.js';
@@ -14,6 +15,8 @@ import {
 } from './checkbox-injector.js';
 import { initOverlayBar, updateOverlayBar } from './overlay-bar.js';
 import { showProgressModal, updateProgress, showComplete, hideProgressModal } from './progress-modal.js';
+import { ensureWritableDirectory, writeFiles } from '../lib/file-writer.js';
+import { DIRECTORY_ACCESS_STATES } from '../lib/directory-state.js';
 
 const LOG = '[GFDL]';
 
@@ -36,15 +39,6 @@ initOverlayBar({
 
 onSelectionChange((selected) => updateOverlayBar(selected.size));
 
-// Listen for messages from service worker
-try {
-  chrome.runtime.onMessage.addListener((message) => {
-    const { type, payload } = message;
-    if (type === 'DOWNLOAD_PROGRESS') updateProgress(payload);
-    if (type === 'DOWNLOAD_COMPLETE') handleComplete(payload);
-  });
-} catch {}
-
 observeNavigation(() => {
   removeCheckboxes();
   clearSelection();
@@ -61,19 +55,39 @@ async function handleDownload() {
   const parsed = parseCurrentUrl();
   if (!parsed) return;
 
+  let directoryResult;
+  try {
+    directoryResult = await ensureWritableDirectory({
+      promptIfMissing: true,
+      promptIfExpired: true
+    });
+  } catch (err) {
+    showProgressModal({ onCancel: hideProgressModal });
+    showComplete({ total: 0, errors: [`Failed to prepare target folder: ${err.message}`] });
+    return;
+  }
+
+  if (!directoryResult.ok || !directoryResult.handle) {
+    showProgressModal({ onCancel: hideProgressModal });
+    showComplete({ total: 0, errors: [getDirectoryErrorMessage(directoryResult.reason)] });
+    return;
+  }
+
   showProgressModal({
     onCancel: () => {
-      safeSendMessage({ type: 'CANCEL_DOWNLOAD', payload: {} });
-      hideProgressModal();
-    },
-    onOpenFolder: () => {
-      safeSendMessage({ type: 'OPEN_DOWNLOADS_FOLDER', payload: {} });
       hideProgressModal();
     }
   });
 
+  updateProgress({
+    completed: 0,
+    total: 0,
+    currentFile: 'Preparing download plan...',
+    errors: []
+  });
+
   const response = await safeSendMessage({
-    type: 'START_DOWNLOAD',
+    type: 'RESOLVE_DOWNLOAD_PLAN',
     payload: {
       owner: parsed.owner,
       repo: parsed.repo,
@@ -84,9 +98,37 @@ async function handleDownload() {
 
   if (!response) {
     showComplete({ total: 0, errors: ['Extension context lost. Reload page.'] });
-  } else if (!response.ok) {
-    showComplete({ total: 0, errors: [response.error] });
+    return;
   }
+
+  if (!response.ok) {
+    showComplete({ total: 0, errors: [response.error] });
+    return;
+  }
+
+  const settings = await chrome.storage.local.get({
+    githubToken: null,
+    concurrentDownloads: 3
+  });
+
+  updateProgress({
+    completed: 0,
+    total: response.manifest.entries.length,
+    currentFile: `Saving to ${response.manifest.rootPath}`,
+    errors: []
+  });
+
+  const result = await writeFiles(directoryResult.handle, response.manifest.entries, {
+    token: settings.githubToken,
+    concurrency: settings.concurrentDownloads,
+    onProgress: (progress) => updateProgress(progress)
+  });
+
+  handleComplete({
+    total: result.completed,
+    errors: result.errors,
+    rootPath: response.manifest.rootPath
+  });
 }
 
 async function handleComplete(payload) {
@@ -94,8 +136,8 @@ async function handleComplete(payload) {
 
   let autoModeEnabled = false;
   try {
-    const r = await chrome.storage.local.get({ autoMode: false });
-    autoModeEnabled = r.autoMode;
+    const result = await chrome.storage.local.get({ autoMode: false });
+    autoModeEnabled = result.autoMode;
   } catch {}
 
   if (autoModeEnabled && noErrors) {
@@ -105,7 +147,16 @@ async function handleComplete(payload) {
       clearSelection();
       updateOverlayBar(0);
     }, 1200);
-  } else {
-    showComplete(payload);
+    return;
   }
+
+  showComplete(payload);
+}
+
+function getDirectoryErrorMessage(reason) {
+  if (reason === DIRECTORY_ACCESS_STATES.EXPIRED) {
+    return 'Folder access expired. Reauthorize the target folder to continue.';
+  }
+
+  return 'Choose a target folder to continue.';
 }
