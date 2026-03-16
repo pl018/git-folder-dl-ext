@@ -222,8 +222,6 @@ function cancelBrowserDownload(downloadId) {
 
 function removeBrowserDownloadFile(downloadId) {
   return new Promise((resolve) => {
-    chrome.downloads.removeFile(downloadId, () => {
-      chrome.downloads.erase({ id: downloadId }, () => resolve());
-    });
+    chrome.downloads.removeFile(downloadId, () => resolve());
   });
 }
